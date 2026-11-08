@@ -148,6 +148,33 @@
   .wtime { width:100%; height:30px; padding:0; text-align:center; font-size:13px; font-weight:600; font-variant-numeric:tabular-nums; background:var(--card); border-radius:8px; }
   .wsess { width:100%; height:26px; padding:0 2px; font-size:12px; text-align:center; text-align-last:center; background:var(--card); border-radius:8px; }
   .sched { white-space:normal; text-align:right; }
+
+  /* Hôm nay / Ngày mai */
+  .tdhead { display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:4px; }
+  .tdhead .chips { margin:0; }
+  .trow { display:grid; grid-template-columns:56px 1fr auto; gap:10px; align-items:center; padding:10px 0; border-top:1px solid var(--line); cursor:pointer; }
+  .tdhead + .trow { border-top:0; }
+  .ttime { font-family:var(--font-display); font-weight:700; font-size:22px; line-height:1; font-variant-numeric:tabular-nums; }
+  .twho { min-width:0; }
+  .twho b { display:block; font-weight:600; line-height:1.3; }
+  .twho span { display:block; color:var(--muted); font-size:13px; line-height:1.35; margin-top:2px; }
+  button.okbtn { background:var(--ok-soft); color:var(--ok); }
+
+  /* Hộp thêm bài: tìm nhanh, chạm để thêm nhiều bài */
+  #addDlg { margin:12px auto auto; border-radius:20px; max-height:calc(100vh - 24px); }
+  #addDlg::before { display:none; }
+  .pick { max-height:55vh; overflow-y:auto; margin-top:8px; border-top:1px solid var(--line); }
+  .prow { display:flex; justify-content:space-between; align-items:center; gap:10px; width:100%; text-align:left; background:none; color:var(--text); border:0; border-bottom:1px solid var(--line); border-radius:0; padding:10px 4px; font-weight:500; line-height:1.3; }
+  .prow:hover { background:var(--surface-2); filter:none; }
+  .prow small { color:var(--muted); font-weight:400; font-size:12px; }
+  .prow .pst { flex-shrink:0; font-size:13px; font-weight:600; color:var(--brand); }
+  .prow.added { background:var(--accent-soft); }
+  .prow.added .pst { color:var(--ok); }
+
+  /* Thông báo nhỏ + hoàn tác */
+  .toast { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom,0px)); max-width:528px; margin:0 auto; z-index:30; background:var(--text); color:var(--bg); border-radius:12px; padding:8px 8px 8px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow:0 6px 20px rgba(0,0,0,.25); font-size:14px; min-height:48px; }
+  .toast[hidden] { display:none; }
+  .toast button { background:none; color:inherit; text-decoration:underline; font-weight:700; padding:8px 10px; flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -163,6 +190,7 @@
 
 <main>
   <div class="view on" id="view-clients">
+    <div id="todayBox"></div>
     <div class="toolbar"><input id="search" type="search" placeholder="Tìm theo tên hoặc số điện thoại..."></div>
     <div id="list"></div>
   </div>
@@ -185,6 +213,8 @@
   <button class="ghost" id="btnImpSheet">📥 Nhập khách từ Google Sheets</button>
   <button class="ghost" id="btnImpEx">📥 Nhập bài tập từ Excel</button>
 </footer>
+
+<div class="toast" id="toast" hidden role="status" aria-live="polite"><span id="toastMsg"></span><button type="button" id="toastBtn">Hoàn tác</button></div>
 
 <!-- Hồ sơ khách + gói tập -->
 <dialog id="dlg">
@@ -252,19 +282,16 @@
   </form>
 </dialog>
 
-<!-- Thêm bài vào buổi: nhóm cơ -> 1 ô gộp bài + biến thể -->
+<!-- Thêm bài vào buổi: tìm nhanh, chạm để thêm nhiều bài liền -->
 <dialog id="addDlg">
-  <form id="addForm" method="dialog">
-    <h2>Thêm bài tập vào buổi</h2>
-    <label>Nhóm cơ</label>
-    <select id="a_group"></select>
-    <label>Bài tập / biến thể</label>
-    <select id="a_ex"></select>
-    <div class="actions">
-      <button type="button" class="ghost" id="addCancel">Hủy</button>
-      <button type="submit">Thêm</button>
-    </div>
-  </form>
+  <div class="row" style="align-items:flex-start;margin-bottom:10px">
+    <h2 id="a_title" style="margin:0">Thêm bài tập</h2>
+    <button type="button" class="sm" id="addDone" autofocus>Xong</button>
+  </div>
+  <input id="a_q" type="search" placeholder="Tìm bài (gõ không dấu cũng được)..." autocomplete="off">
+  <select id="a_group" style="margin-top:8px" aria-label="Lọc theo nhóm cơ"></select>
+  <div class="muted" id="a_info"></div>
+  <div id="a_list" class="pick"></div>
 </dialog>
 
 <!-- Nhập bài tập từ Excel / Sheets -->
@@ -324,6 +351,13 @@ function save() {
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+// So khớp không phân biệt dấu: "nguyen" tìm được "Nguyễn"
+const fold = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d");
+function matchText(q, ...fields) {
+  const a = fold(q).trim(); if (!a) return true;
+  const digits = q.replace(/\D/g, "");
+  return fields.some(f => fold(f).includes(a) || (digits.length >= 3 && String(f || "").replace(/\D/g, "").includes(digits)));
+}
 const ymd = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 const parseYmd = s => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
 const today = () => ymd(new Date());
@@ -388,9 +422,10 @@ $("btnAdd").onclick = () => tab === "clients" ? openForm() : openEx();
 
 // ---------- danh sách khách ----------
 function render() {
-  const q = $("search").value.trim().toLowerCase();
+  renderToday();
+  const q = $("search").value;
   const items = data.clients
-    .filter(c => !q || c.name.toLowerCase().includes(q) || (c.phone || "").includes(q))
+    .filter(c => matchText(q, c.name, c.phone))
     .sort((a, b) => a.name.localeCompare(b.name, "vi"));
   if (!items.length) {
     $("list").innerHTML = `<div class="empty">${data.clients.length ? "Không tìm thấy khách nào." : "Chưa có khách nào.<br>Bấm “+ Thêm khách” để bắt đầu, hoặc nhập từ Google Sheets ở cuối trang."}</div>`;
@@ -477,7 +512,8 @@ function showClient(id) {
 
 function itemRows(x, s, ii, it) {
   const k = `${x.si}:${ii}`, at = `data-s="${x.si}" data-i="${ii}"`;
-  const fld = (f, l, v, mode) => `<div><span class="ilbl">${l}</span><input data-f="${f}" ${at} value="${esc(v)}" ${mode ? `inputmode="${mode}"` : ""} aria-label="${l}"></div>`;
+  const fld = (f, l, v, mode, ph) => `<div><span class="ilbl">${l}</span><input data-f="${f}" ${at} value="${esc(v)}" ${mode ? `inputmode="${mode}"` : ""} ${ph ? `placeholder="${esc(ph)}"` : ""} aria-label="${l}"></div>`;
+  const pw = prevWeight(it, progWeek);
   const extra = openExtra.has(k) ? `<div class="mini">
       ${[["rpe", "RPE"], ["rir", "RIR"], ["tempo", "Tempo"], ["rest", "Nghỉ"]].map(([f, l]) => `<div><label>${l}</label><input data-f="${f}" ${at} value="${esc(it[f])}"></div>`).join("")}
       <div><label>Thứ tự</label><span class="mv"><button class="ghost sm" data-act="up" ${at}>▲</button><button class="ghost sm" data-act="down" ${at}>▼</button></span></div>
@@ -490,7 +526,7 @@ function itemRows(x, s, ii, it) {
       <div class="ifields">
         ${fld("sets", "Set", it.sets, "numeric")}
         ${fld("reps", "Rep", it.reps)}
-        ${fld("w", `Tạ T${progWeek + 1} (kg)`, (it.weights || [])[progWeek], "decimal")}
+        ${fld("w", `Tạ T${progWeek + 1} (kg)`, (it.weights || [])[progWeek], "decimal", pw ? `${pw.v} (T${pw.w + 1})` : "")}
       </div>
     </div>${extra}`;
 }
@@ -556,7 +592,8 @@ function renderClient() {
       ${W < 12 ? `<button class="chip" data-act="weekAdd" aria-label="Thêm tuần">+</button>` : ""}
       ${W > 1 ? `<button class="chip" data-act="weekSub" aria-label="Bớt tuần">−</button>` : ""}
     </div>
-    <div class="muted" style="margin:6px 0 12px">Set và rep giữ nguyên cả chương trình. Cột Tạ là mức tạ của tuần đang chọn.</div>
+    <div class="muted" style="margin:6px 0 ${progWeek > 0 ? 8 : 12}px">Set và rep giữ nguyên cả chương trình. Ô Tạ là mức tạ của tuần đang chọn${progWeek > 0 ? "; số mờ trong ô là tạ tuần trước" : ""}.</div>
+    ${progWeek > 0 ? `<button class="sm ghost" data-act="copyPrev" style="margin-bottom:12px">⤵ Chép tạ tuần trước vào các ô trống</button>` : ""}
     ${plan.map(x => sessCard(x, c, p)).join("")}
     <button data-act="addSession">+ Thêm buổi tập</button>
 
@@ -636,15 +673,38 @@ cv.addEventListener("click", e => {
     p.sessions.splice(s, 1); openExtra.clear();
   }
   else if (act === "extra") { const k = `${s}:${i}`; openExtra.has(k) ? openExtra.delete(k) : openExtra.add(k); }
-  else if (act === "delItem") { p.sessions[s].items.splice(i, 1); openExtra.clear(); }
+  else if (act === "delItem") {
+    const sess = p.sessions[s], removed = sess.items.splice(i, 1)[0]; openExtra.clear();
+    save(); renderClient(); render();
+    toast(`Đã bỏ “${removed.label}”`, () => {
+      const ss = ensureProg(c).sessions.find(z => z.id === sess.id); if (!ss) return;
+      ss.items.splice(Math.min(i, ss.items.length), 0, removed);
+      save(); if (curId === c.id) renderClient();
+    });
+    return;
+  }
+  else if (act === "copyPrev") {
+    const wk = progWeek, filled = [];
+    p.sessions.forEach(ss => ss.items.forEach(it => {
+      const pw = prevWeight(it, wk), cv0 = (it.weights || [])[wk];
+      if (pw && (cv0 === undefined || cv0 === null || String(cv0).trim() === "")) { it.weights = it.weights || []; it.weights[wk] = pw.v; filled.push(it); }
+    }));
+    if (!filled.length) { toast("Không có ô tạ trống nào để chép."); return; }
+    save(); renderClient();
+    toast(`Đã chép tạ cho ${filled.length} bài. Sửa lại bài nào tăng tạ.`, () => {
+      filled.forEach(it => { it.weights[wk] = ""; }); save(); if (curId === c.id) renderClient();
+    });
+    return;
+  }
   else if (act === "up" && i > 0) { const a = p.sessions[s].items; [a[i - 1], a[i]] = [a[i], a[i - 1]]; openExtra.clear(); }
   else if (act === "down") { const a = p.sessions[s].items; if (i < a.length - 1) { [a[i + 1], a[i]] = [a[i], a[i + 1]]; openExtra.clear(); } }
-  else if (act === "checkin") {
-    const d = $("ckDate").value; if (!d) return;
-    if (data.schedule.some(x => x.clientId === c.id && x.date === d && x.status === "done")) { alert("Ngày này đã điểm danh rồi."); return; }
-    data.schedule.push({ id: "s" + uid(), clientId: c.id, date: d, time: "", session: "", status: "done", note: "" });
+  else if (act === "checkin") { const d = $("ckDate").value; if (d) checkIn(c, d); return; }
+  else if (act === "ckDel") {
+    const e0 = data.schedule.find(x => x.id === b.dataset.id); if (!e0) return;
+    removeCheck(e0.id);
+    toast(`Đã xóa điểm danh ngày ${fmtDate(e0.date)}`, () => { data.schedule.push(e0); save(); render(); if (curId) renderClient(); });
+    return;
   }
-  else if (act === "ckDel") data.schedule = data.schedule.filter(x => x.id !== b.dataset.id);
   else return;
   save(); renderClient(); render();
 });
@@ -666,36 +726,85 @@ cv.addEventListener("change", e => {
 // ---------- thêm bài vào buổi ----------
 const GROUPS = ["Ngực", "Lưng xô", "Lưng dưới", "Cầu vai (Traps)", "Vai", "Tay trước (Biceps)", "Tay sau (Triceps)", "Cẳng tay", "Đùi trước (Quads)", "Đùi sau (Hamstrings)", "Mông", "Đùi trong / Đùi ngoài", "Bắp chân", "Bụng", "Toàn thân / Cardio"];
 const PATTERNS = ["Đẩy ngang", "Đẩy dọc", "Kéo ngang", "Kéo dọc", "Squat", "Hinge", "Lunge / đơn chân", "Cô lập", "Core / chống xoay", "Khác"];
-$("a_group").innerHTML = `<option value="">Tất cả nhóm</option>` + GROUPS.map(g => `<option>${g}</option>`).join("");
-function fillAddOptions() {
-  const g = $("a_group").value, opts = [];
-  data.exercises.filter(x => !g || x.group === g).sort((a, b) => a.name.localeCompare(b.name, "vi")).forEach(x => {
-    opts.push(`<option value="${esc(x.id)}|-1">${esc(x.name)}</option>`);
-    (x.variations || []).forEach((v, vi) => opts.push(`<option value="${esc(x.id)}|${vi}">${esc(x.name)} — ${esc(v)}</option>`));
+// Hộp thêm bài: gõ để tìm, lọc theo nhóm cơ, chạm để thêm (chạm lần nữa để bỏ), thêm nhiều bài rồi bấm Xong
+let addCtx = null, addGroup = "";
+$("a_group").innerHTML = `<option value="">Tất cả nhóm cơ</option>` + GROUPS.map(g => `<option>${g}</option>`).join("");
+function addOptions() {
+  const out = [];
+  data.exercises.forEach(x => {
+    out.push({ key: x.id + "|-1", ex: x, label: x.name });
+    (x.variations || []).forEach((v, vi) => out.push({ key: x.id + "|" + vi, ex: x, label: `${x.name} — ${v}` }));
   });
-  $("a_ex").innerHTML = opts.join("") || `<option value="">(Chưa có bài trong nhóm này — hãy thêm ở tab Thư viện bài tập)</option>`;
+  return out;
 }
-function openAdd(si) { addToSession = si; fillAddOptions(); $("addDlg").showModal(); }
-$("a_group").onchange = fillAddOptions;
-$("addCancel").onclick = () => $("addDlg").close();
-$("addForm").onsubmit = () => {
-  const v = $("a_ex").value; if (!v) return;
-  const [id, vi] = v.split("|"), ex = data.exercises.find(x => x.id === id); if (!ex) return;
-  const label = +vi >= 0 ? `${ex.name} — ${ex.variations[+vi]}` : ex.name;
-  ensureProg(cur()).sessions[addToSession].items.push({ exId: id, label, sets: "", reps: "", rpe: "", rir: "", tempo: "", rest: "", weights: [] });
-  save(); renderClient();
+const addSess = () => addCtx && ensureProg(addCtx.c).sessions.find(s => s.id === addCtx.sid);
+function addStatus(o, sess) {
+  if (addCtx.added.has(o.key)) return "✓ Đã thêm";
+  return sess.items.some(it => it.label === o.label) ? "đã có · +" : "+ Thêm";
+}
+function addInfo(n) {
+  const sess = addSess(); if (!sess) return;
+  if (n !== undefined) addCtx.n = n;
+  $("a_info").textContent = (addCtx.added.size ? `Đã thêm ${addCtx.added.size} bài vào ${sess.name}. ` : "") + (addCtx.n !== undefined ? `${addCtx.n} bài phù hợp. ` : "") + "Chạm để thêm, chạm lần nữa để bỏ.";
+}
+function renderAddList() {
+  const sess = addSess(); if (!sess) return;
+  if (!data.exercises.length) {
+    $("a_info").textContent = "";
+    $("a_list").innerHTML = `<div class="empty" style="margin-top:8px">Thư viện bài tập đang trống.<br><button type="button" id="a_loadLib" style="margin-top:10px">📚 Nạp ${LIB_TOTAL} bài từ file Excel</button></div>`;
+    return;
+  }
+  const q = $("a_q").value, g = $("a_group").value;
+  const list = addOptions().filter(o => (!g || o.ex.group === g) && matchText(q, o.label, o.ex.group)).sort((a, b) => a.label.localeCompare(b.label, "vi"));
+  addInfo(list.length);
+  $("a_list").innerHTML = list.slice(0, 200).map(o => `<button type="button" class="prow ${addCtx.added.has(o.key) ? "added" : ""}" data-k="${esc(o.key)}">
+      <span>${esc(o.label)}<br><small>${esc(o.ex.group || "")}</small></span><span class="pst">${addStatus(o, sess)}</span></button>`).join("")
+    + (list.length > 200 ? `<div class="muted" style="padding:8px 4px">… còn ${list.length - 200} bài nữa, hãy gõ để lọc bớt.</div>` : "")
+    || `<div class="muted" style="padding:10px 4px">Không có bài nào khớp.</div>`;
+}
+function openAdd(si) {
+  const c = cur(), sess = ensureProg(c).sessions[si]; if (!sess) return;
+  addCtx = { c, sid: sess.id, added: new Map(), changed: false };
+  $("a_title").textContent = "Thêm bài vào " + sess.name;
+  $("a_q").value = ""; $("a_group").value = addGroup;
+  renderAddList();
+  $("addDlg").showModal();
+  $("a_list").scrollTop = 0;
+  if (matchMedia("(pointer: fine)").matches) $("a_q").focus();
+}
+$("a_q").oninput = renderAddList;
+$("a_group").onchange = () => { addGroup = $("a_group").value; renderAddList(); $("a_list").scrollTop = 0; };
+$("a_list").onclick = e => {
+  if (e.target.closest("#a_loadLib")) { loadLib(); renderAddList(); return; }
+  const b = e.target.closest(".prow"), sess = addSess(); if (!b || !sess) return;
+  const k = b.dataset.k, [id, vi] = k.split("|"), ex = data.exercises.find(x => x.id === id); if (!ex) return;
+  const o = { key: k, ex, label: +vi >= 0 ? `${ex.name} — ${ex.variations[+vi]}` : ex.name };
+  if (addCtx.added.has(k)) {
+    const i = sess.items.indexOf(addCtx.added.get(k)); if (i >= 0) sess.items.splice(i, 1);
+    addCtx.added.delete(k);
+  } else {
+    const it = { exId: id, label: o.label, sets: "", reps: "", rpe: "", rir: "", tempo: "", rest: "", weights: [] };
+    sess.items.push(it); addCtx.added.set(k, it);
+  }
+  addCtx.changed = true; save();
+  b.classList.toggle("added", addCtx.added.has(k));
+  b.querySelector(".pst").textContent = addStatus(o, sess);
+  addInfo();
 };
+function finishAdd() { if (addCtx && addCtx.changed && curId) renderClient(); addCtx = null; }
+$("addDone").onclick = () => { $("addDlg").close(); finishAdd(); };
+$("addDlg").addEventListener("close", finishAdd); // đóng bằng phím Esc / nút quay lại
 
 // ---------- thư viện bài tập ----------
 let editingEx = null, exGroupFilter = "";
 $("e_group").innerHTML = `<option value="">— Chọn —</option>` + GROUPS.map(g => `<option>${g}</option>`).join("");
 $("e_pattern").innerHTML = `<option value="">— Chọn —</option>` + PATTERNS.map(g => `<option>${g}</option>`).join("");
 function renderEx() {
-  const q = $("exSearch").value.trim().toLowerCase();
+  const q = $("exSearch").value;
   $("exChips").innerHTML = ["", ...GROUPS].map(g => `<button type="button" class="chip ${g === exGroupFilter ? "on" : ""}" data-g="${esc(g)}">${g || "Tất cả"}</button>`).join("");
   const items = data.exercises
     .filter(x => !exGroupFilter || x.group === exGroupFilter)
-    .filter(x => !q || x.name.toLowerCase().includes(q) || (x.muscle || "").toLowerCase().includes(q) || (x.group || "").toLowerCase().includes(q))
+    .filter(x => matchText(q, x.name, x.muscle, x.group))
     .sort((a, b) => (GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group)) || a.name.localeCompare(b.name, "vi"));
   if (!items.length) {
     $("exList").innerHTML = `<div class="empty">${data.exercises.length ? "Không có bài nào." : "Chưa có bài tập nào.<br>Bấm “+ Thêm bài tập”, hoặc bấm “Nạp danh sách bài tập” ở cuối trang."}</div>`;
@@ -896,7 +1005,7 @@ const XI_FIELDS = [
   ["note", "Ghi chú kỹ thuật", ["ghi chú", "kỹ thuật", "note"]],
   ["video", "Link video", ["video", "link"]]
 ];
-const nz = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").trim();
+const nz = s => fold(s).trim();
 const matchList = (v, list) => {
   const a = nz(v); if (!a) return "";
   return list.find(x => nz(x) === a) || (a.length >= 3 ? list.find(x => nz(x).startsWith(a) || a.startsWith(nz(x))) : "") || "";
@@ -948,10 +1057,108 @@ $("xi_go").onclick = () => {
   alert(msg);
 };
 
+// ---------- thông báo nhỏ + hoàn tác ----------
+let toastTimer = null, toastUndo = null;
+function toast(msg, undo) {
+  $("toastMsg").textContent = msg;
+  toastUndo = undo || null;
+  $("toastBtn").hidden = !undo;
+  $("toast").hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { $("toast").hidden = true; toastUndo = null; }, undo ? 7000 : 3000);
+}
+$("toastBtn").onclick = () => {
+  const f = toastUndo; toastUndo = null; clearTimeout(toastTimer); $("toast").hidden = true;
+  if (f) { f(); toast("Đã hoàn tác."); }
+};
+
+// ---------- tạ tuần trước (gợi ý mờ + chép) ----------
+function prevWeight(it, w) {
+  for (let k = w - 1; k >= 0; k--) {
+    const v = (it.weights || [])[k];
+    if (v !== undefined && v !== null && String(v).trim() !== "") return { v: String(v).trim(), w: k };
+  }
+  return null;
+}
+
+// ---------- điểm danh ----------
+function checkIn(c, date) {
+  if (data.schedule.some(x => x.clientId === c.id && x.date === date && x.status === "done")) { toast(`${c.name} đã được điểm danh ngày này rồi.`); return false; }
+  const x = c.weekly && c.weekly.days ? c.weekly.days.find(z => z.d === dowIdx(parseYmd(date))) : null;
+  const sess = x && c.program ? c.program.sessions.find(s => s.id === x.s) : null;
+  const entry = { id: "s" + uid(), clientId: c.id, date, time: x ? (x.t || "") : "", session: sess ? sess.name : "", status: "done", note: "" };
+  data.schedule.push(entry);
+  save(); render(); if (curId) renderClient();
+  const p = c.pkg || {}, left = p.total ? p.total - doneCount(c) : null;
+  toast(`Đã điểm danh ${c.name}${left === null ? "" : left > 0 ? ` · còn ${left} buổi` : " · đã hết buổi trong gói"}`, () => removeCheck(entry.id));
+  return true;
+}
+function removeCheck(id) {
+  data.schedule = data.schedule.filter(x => x.id !== id);
+  save(); render(); if (curId) renderClient();
+}
+
+// ---------- Hôm nay / Ngày mai ở đầu danh sách khách ----------
+let todayMode = 0; // 0 = hôm nay, 1 = ngày mai
+function dayPlan(dateObj) {
+  const d = dowIdx(dateObj), key = ymd(dateObj), rows = [];
+  data.clients.forEach(c => {
+    const x = c.weekly && c.weekly.days ? c.weekly.days.find(z => z.d === d) : null;
+    const done = data.schedule.find(s => s.clientId === c.id && s.date === key && s.status === "done");
+    if (!x && !done) return;
+    const t = x ? (x.t !== undefined ? x.t : (c.weekly.time || "")) : (done.time || "");
+    const sess = x && c.program ? c.program.sessions.find(s => s.id === x.s) : null;
+    rows.push({ c, t, sess, done, extra: !x });
+  });
+  return rows.sort((a, b) => (a.t || "99:99").localeCompare(b.t || "99:99") || a.c.name.localeCompare(b.c.name, "vi"));
+}
+function renderToday() {
+  const box = $("todayBox");
+  if (!data.clients.length || $("search").value.trim()) { box.innerHTML = ""; return; }
+  const now = new Date(), tmr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+  const tdRows = dayPlan(now), tmRows = dayPlan(tmr), base = todayMode ? tmr : now, rows = todayMode ? tmRows : tdRows;
+  const rowHtml = r => {
+    const p = r.c.pkg || {}, left = p.total ? p.total - doneCount(r.c) : null;
+    const sub = [r.sess ? r.sess.name + (r.sess.items.length ? ` · ${r.sess.items.length} bài` : "") : (r.extra ? "Tập ngoài lịch" : "Chưa gán buổi"),
+      left === null ? "" : left > 0 ? `còn ${left} buổi` : "hết buổi trong gói"].filter(Boolean).join(" · ");
+    const btn = todayMode ? "" : r.done
+      ? `<button class="sm okbtn" data-undo="${esc(r.done.id)}" aria-label="Bỏ điểm danh">✓ Đã tập</button>`
+      : `<button class="sm" data-ck="${esc(r.c.id)}">✓ Điểm danh</button>`;
+    return `<div class="trow" data-open="${esc(r.c.id)}"><div class="ttime">${r.t ? fmtTime(r.t) : "--"}</div>
+      <div class="twho"><b>${esc(r.c.name)}</b><span>${esc(sub)}</span></div>${btn}</div>`;
+  };
+  box.innerHTML = `<div class="card static">
+    <div class="tdhead">
+      <div class="chips">
+        <button class="chip ${todayMode ? "" : "on"}" data-tm="0">Hôm nay · ${tdRows.length}</button>
+        <button class="chip ${todayMode ? "on" : ""}" data-tm="1">Ngày mai · ${tmRows.length}</button>
+      </div>
+      <span class="muted" style="margin:0">${DAYNAMES[dowIdx(base)]}, ${dm(base)}</span>
+    </div>
+    ${rows.map(rowHtml).join("") || `<div class="muted" style="padding:6px 0 2px">${todayMode ? "Ngày mai" : "Hôm nay"} không có khách nào có lịch tập.</div>`}
+  </div>`;
+}
+$("todayBox").onclick = e => {
+  const tm = e.target.closest("[data-tm]"); if (tm) { todayMode = +tm.dataset.tm; renderToday(); return; }
+  const ck = e.target.closest("[data-ck]");
+  if (ck) { const c = data.clients.find(x => x.id === ck.dataset.ck); if (c) checkIn(c, today()); return; }
+  const un = e.target.closest("[data-undo]");
+  if (un) {
+    const s = data.schedule.find(x => x.id === un.dataset.undo), c = s && data.clients.find(x => x.id === s.clientId);
+    if (s && confirm(`Bỏ điểm danh hôm nay của ${c ? c.name : "khách này"}?`)) removeCheck(s.id);
+    return;
+  }
+  const row = e.target.closest("[data-open]"); if (row) showClient(row.dataset.open);
+};
+
+// Mở lại app sang ngày mới thì tự cập nhật ngày
+function updateTodayLabel() { const n = new Date(); $("todayLbl").textContent = DAYNAMES[dowIdx(n)] + ", " + dm(n); }
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { updateTodayLabel(); if (!curId) render(); } });
+
 // ---------- khởi động ----------
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
 if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-{ const n = new Date(); $("todayLbl").textContent = DAYNAMES[dowIdx(n)] + ", " + dm(n); }
+updateTodayLabel();
 render();
 renderEx();
 </script>
