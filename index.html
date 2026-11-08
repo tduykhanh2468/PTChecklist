@@ -3,7 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sổ PT</title>
+<title>Sổ tập PT Khánh Duy</title>
+<meta name="apple-mobile-web-app-title" content="PT Khánh Duy">
+<meta name="application-name" content="Sổ tập PT Khánh Duy">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
 <meta name="theme-color" content="#e8590c">
@@ -35,7 +37,7 @@
   :focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
 
   header { background:var(--bg); border-bottom:1px solid var(--line); padding:12px 16px 10px; display:flex; align-items:baseline; justify-content:space-between; gap:12px; position:sticky; top:0; z-index:5; }
-  header h1 { margin:0; font-family:var(--font-display); font-weight:700; font-size:26px; letter-spacing:.04em; text-transform:uppercase; line-height:1; }
+  header h1 { margin:0; font-family:var(--font-display); font-weight:700; font-size:clamp(20px, 6.2vw, 26px); letter-spacing:.03em; text-transform:uppercase; line-height:1; white-space:nowrap; }
   header h1 b { color:var(--brand); }
   .today { color:var(--muted); font-size:13px; }
   main { max-width:560px; margin:0 auto; padding:14px 16px 110px; }
@@ -171,6 +173,14 @@
   .prow.added { background:var(--accent-soft); }
   .prow.added .pst { color:var(--ok); }
 
+  /* Sinh nhật */
+  .bday { background:var(--accent-soft); border-radius:10px; padding:6px 10px; margin-bottom:10px; }
+  .bline { display:flex; align-items:center; justify-content:space-between; gap:6px 8px; flex-wrap:wrap; padding:5px 0; font-size:14px; }
+  .bline + .bline { border-top:1px dashed var(--line); }
+  .bline b { font-weight:600; }
+  .bsoon { cursor:pointer; }
+  a.btnlink { display:inline-block; text-decoration:none; font-weight:600; font-size:13px; padding:5px 11px; border-radius:10px; background:var(--card); color:var(--text); border:1px solid var(--line); }
+
   /* Thông báo nhỏ + hoàn tác */
   .toast { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom,0px)); max-width:528px; margin:0 auto; z-index:30; background:var(--text); color:var(--bg); border-radius:12px; padding:8px 8px 8px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow:0 6px 20px rgba(0,0,0,.25); font-size:14px; min-height:48px; }
   .toast[hidden] { display:none; }
@@ -179,7 +189,7 @@
 </head>
 <body>
 <header>
-  <h1>Sổ tập <b>PT</b></h1>
+  <h1>Sổ tập PT <b>Khánh Duy</b></h1>
   <div class="today" id="todayLbl"></div>
 </header>
 <nav>
@@ -225,7 +235,7 @@
     <input id="f_name" required>
     <div class="grid2">
       <div><label>Số điện thoại</label><input id="f_phone" type="tel" inputmode="tel"></div>
-      <div><label>Ngày sinh</label><input id="f_dob" type="date"></div>
+      <div><label>Ngày sinh (để nhắc 🎂)</label><input id="f_dob" type="date"></div>
     </div>
     <label>Mục tiêu tập luyện</label>
     <input id="f_goal" placeholder="VD: giảm mỡ, tăng cơ, phục hồi lưng...">
@@ -432,10 +442,10 @@ function render() {
     return;
   }
   $("list").innerHTML = items.map(c => {
-    const wt = weeklyText(c), p = c.pkg || {};
+    const wt = weeklyText(c), p = c.pkg || {}, bd = nextBirthday(c.dob);
     const sub = [c.phone || "Chưa có SĐT", p.name ? (p.total ? `đã tập ${doneCount(c)}/${p.total} buổi` : p.name) : "Chưa có gói"].join(" · ");
     return `<div class="card" data-id="${esc(c.id)}">
-      <div class="row"><span class="name">${esc(c.name)}</span><span class="sched">${wt ? esc(wt) : `<span class="muted" style="font-weight:400">Chưa có lịch</span>`}</span></div>
+      <div class="row"><span class="name">${esc(c.name)}${bd && bd.days <= 7 ? ` <span title="Sinh nhật ${esc(bdayWhen(bd))}">🎂</span>` : ""}</span><span class="sched">${wt ? esc(wt) : `<span class="muted" style="font-weight:400">Chưa có lịch</span>`}</span></div>
       <div class="row"><span class="muted">${esc(sub)}</span>${pkgBadge(p)}</div>
     </div>`;
   }).join("");
@@ -568,7 +578,9 @@ function renderClient() {
   p.sessions.forEach((s, si) => { if (!used.has(si)) plan.push({ tag: "—", si }); });
   const wt = weeklyText(c);
   const checks = data.schedule.filter(s => s.clientId === c.id && s.status === "done").sort((a, b) => b.date.localeCompare(a.date));
-  const info = [c.phone, c.dob ? "Sinh " + fmtDate(c.dob) : "", c.goal].filter(Boolean).map(esc).join(" · ");
+  const bd = nextBirthday(c.dob), age = bd ? (bd.days === 0 ? bd.age : bd.age - 1) : null;
+  const info = [c.phone, c.dob ? "Sinh " + fmtDate(c.dob) + (age !== null && age >= 0 ? ` (${age} tuổi)` : "") : "", c.goal].filter(Boolean).map(esc).join(" · ");
+  const bdayNote = bd && bd.days <= 7 ? `<div class="bday"><div class="bline"><span>🎂 ${bd.days === 0 ? `Hôm nay là sinh nhật · tròn <b>${bd.age} tuổi</b>` : `Sinh nhật ${esc(bdayWhen(bd))} · tròn ${bd.age} tuổi`}</span>${bdayActions(c, true)}</div></div>` : "";
 
   $("view-client").innerHTML = `
     <div class="row" style="margin-bottom:12px;gap:10px">
@@ -577,6 +589,7 @@ function renderClient() {
     </div>
     <h2 style="font-size:32px;margin-bottom:2px">${esc(c.name)}</h2>
     <div class="muted" style="margin:0 0 12px">${info || "Chưa có thông tin liên hệ"}</div>
+    ${bdayNote}
     ${c.health ? `<div class="notice">⚠ ${esc(c.health)}</div>` : ""}
     <div class="card static">
       <label style="margin:0 0 6px">Lịch tập trong tuần</label>
@@ -644,6 +657,7 @@ cv.addEventListener("click", e => {
   const b = e.target.closest("[data-act]"); if (!b) return;
   const act = b.dataset.act, s = +b.dataset.s, i = +b.dataset.i, c = cur(), p = ensureProg(c);
   if (act === "back") { setTab("clients"); render(); return; }
+  if (act === "greet") { copyGreeting(c); return; }
   if (act === "edit") return openForm(curId);
   if (act === "addItem") return openAdd(s);
   if (act === "toggleDay") {
@@ -1125,9 +1139,10 @@ function renderToday() {
       ? `<button class="sm okbtn" data-undo="${esc(r.done.id)}" aria-label="Bỏ điểm danh">✓ Đã tập</button>`
       : `<button class="sm" data-ck="${esc(r.c.id)}">✓ Điểm danh</button>`;
     return `<div class="trow" data-open="${esc(r.c.id)}"><div class="ttime">${r.t ? fmtTime(r.t) : "--"}</div>
-      <div class="twho"><b>${esc(r.c.name)}</b><span>${esc(sub)}</span></div>${btn}</div>`;
+      <div class="twho"><b>${esc(r.c.name)}${(nextBirthday(r.c.dob) || {}).days === 0 ? " 🎂" : ""}</b><span>${esc(sub)}</span></div>${btn}</div>`;
   };
   box.innerHTML = `<div class="card static">
+    ${bdayHtml()}
     <div class="tdhead">
       <div class="chips">
         <button class="chip ${todayMode ? "" : "on"}" data-tm="0">Hôm nay · ${tdRows.length}</button>
@@ -1139,6 +1154,9 @@ function renderToday() {
   </div>`;
 }
 $("todayBox").onclick = e => {
+  if (e.target.closest("a")) return; // nút Mở Zalo: để trình duyệt tự mở
+  const gr = e.target.closest("[data-greet]");
+  if (gr) { const c = data.clients.find(x => x.id === gr.dataset.greet); if (c) copyGreeting(c); return; }
   const tm = e.target.closest("[data-tm]"); if (tm) { todayMode = +tm.dataset.tm; renderToday(); return; }
   const ck = e.target.closest("[data-ck]");
   if (ck) { const c = data.clients.find(x => x.id === ck.dataset.ck); if (c) checkIn(c, today()); return; }
@@ -1150,6 +1168,47 @@ $("todayBox").onclick = e => {
   }
   const row = e.target.closest("[data-open]"); if (row) showClient(row.dataset.open);
 };
+
+// ---------- sinh nhật ----------
+// Lần sinh nhật kế tiếp tính từ hôm nay: { date, days (còn mấy ngày, 0 = hôm nay), age (tròn bao nhiêu tuổi) }
+function nextBirthday(dob, from) {
+  const m0 = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob || ""); if (!m0) return null;
+  const y = +m0[1], m = +m0[2], d = +m0[3]; if (y < 1900 || m < 1 || m > 12 || d < 1 || d > 31) return null;
+  const f = from || new Date(), base = new Date(f.getFullYear(), f.getMonth(), f.getDate());
+  const on = yr => { const t = new Date(yr, m - 1, d); return t.getMonth() === m - 1 ? t : new Date(yr, m, 0); }; // 29/2 năm không nhuận → 28/2
+  let nb = on(base.getFullYear());
+  if (nb < base) nb = on(base.getFullYear() + 1);
+  const age = nb.getFullYear() - y;
+  return age < 0 ? null : { date: nb, days: Math.round((nb - base) / 86400000), age };
+}
+const bdayWhen = bd => bd.days === 0 ? "hôm nay" : bd.days === 1 ? "ngày mai" : `${DAYNAMES[dowIdx(bd.date)]}, ${dm(bd.date)} · còn ${bd.days} ngày`;
+const firstName = c => String(c.name || "").trim().split(/\s+/).pop() || "bạn";
+function zaloUrl(phone) {
+  let s = String(phone || "").replace(/\D/g, "");
+  if (s.startsWith("84")) s = "0" + s.slice(2);
+  return s.length >= 9 ? "https://zalo.me/" + s : "";
+}
+function bdayActions(c, inPage) {
+  const z = zaloUrl(c.phone);
+  return `<span class="mv"><button class="sm" ${inPage ? `data-act="greet"` : `data-greet="${esc(c.id)}"`}>Chép lời chúc</button>${z ? `<a class="btnlink" href="${esc(z)}" target="_blank" rel="noopener">Mở Zalo</a>` : ""}</span>`;
+}
+function bdayHtml() {
+  const list = data.clients.map(c => ({ c, bd: nextBirthday(c.dob) })).filter(x => x.bd && x.bd.days <= 7)
+    .sort((a, b) => a.bd.days - b.bd.days || a.c.name.localeCompare(b.c.name, "vi"));
+  if (!list.length) return "";
+  return `<div class="bday">${list.map(({ c, bd }) => bd.days === 0
+    ? `<div class="bline" data-open="${esc(c.id)}"><span>🎂 Hôm nay sinh nhật <b>${esc(c.name)}</b> · ${bd.age} tuổi</span>${bdayActions(c)}</div>`
+    : `<div class="bline bsoon" data-open="${esc(c.id)}"><span>🎂 <b>${esc(c.name)}</b> · ${esc(bdayWhen(bd))}</span><span class="muted" style="margin:0">tròn ${bd.age} tuổi</span></div>`).join("")}</div>`;
+}
+function greetText(c) {
+  const n = firstName(c);
+  return `Chúc mừng sinh nhật ${n}! 🎂🎉\nChúc ${n} tuổi mới thật nhiều sức khỏe, luôn vui vẻ và ngày càng khỏe đẹp. Cảm ơn ${n} đã luôn chăm chỉ tập luyện cùng mình. Tuổi mới mình cùng nhau chinh phục thêm nhiều mục tiêu nữa nhé! 💪`;
+}
+async function copyGreeting(c) {
+  const text = greetText(c);
+  try { await navigator.clipboard.writeText(text); toast(`Đã chép lời chúc cho ${firstName(c)}. Mở Zalo rồi dán để gửi.`); }
+  catch (e) { window.prompt("Chép lời chúc dưới đây rồi dán vào Zalo:", text); }
+}
 
 // Mở lại app sang ngày mới thì tự cập nhật ngày
 function updateTodayLabel() { const n = new Date(); $("todayLbl").textContent = DAYNAMES[dowIdx(n)] + ", " + dm(n); }

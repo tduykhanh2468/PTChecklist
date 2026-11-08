@@ -1,7 +1,7 @@
 {
-  "name": "Sổ PT",
-  "short_name": "Sổ PT",
-  "description": "Quản lý khách, giáo án và lịch tập cho HLV",
+  "name": "Sổ tập PT Khánh Duy",
+  "short_name": "PT Khánh Duy",
+  "description": "Quản lý khách, giáo án và lịch tập của HLV Khánh Duy",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
