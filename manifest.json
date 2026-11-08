@@ -1,0 +1,13 @@
+{
+  "name": "Sổ PT",
+  "short_name": "Sổ PT",
+  "description": "Quản lý khách, giáo án và lịch tập cho HLV",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f6f8",
+  "theme_color": "#e8590c",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}
