@@ -180,8 +180,10 @@
   <button class="ghost" id="btnExport">⬇ Sao lưu ra file</button>
   <button class="ghost" id="btnImport">⬆ Khôi phục từ file</button>
   <input type="file" id="fileImport" accept=".json" hidden>
-  <button class="ghost" id="btnSeed">📚 Nạp thư viện bài tập mẫu</button>
+  <button class="ghost" id="btnSeed">📚 Nạp danh sách bài tập (file Excel)</button>
+  <button class="ghost" id="btnClearEx">🗑 Xóa toàn bộ thư viện bài tập</button>
   <button class="ghost" id="btnImpSheet">📥 Nhập khách từ Google Sheets</button>
+  <button class="ghost" id="btnImpEx">📥 Nhập bài tập từ Excel</button>
 </footer>
 
 <!-- Hồ sơ khách + gói tập -->
@@ -265,6 +267,20 @@
   </form>
 </dialog>
 
+<!-- Nhập bài tập từ Excel / Sheets -->
+<dialog id="xiDlg">
+  <h2>Nhập bài tập từ Excel</h2>
+  <div class="muted">Mở file Excel, bôi đen vùng gồm cả hàng tiêu đề, bấm Ctrl+C rồi dán vào ô dưới. Hoặc lưu file Excel thành CSV (Tệp → Lưu thành → CSV UTF-8) rồi chọn file.<br>Mỗi dòng là một bài hoặc một biến thể. Các dòng cùng tên bài sẽ được gom lại. Trong một ô, các biến thể ngăn cách bằng dấu chấm phẩy (;).</div>
+  <textarea id="xi_text" style="min-height:110px;margin-top:8px" placeholder="Dán dữ liệu vào đây..."></textarea>
+  <div style="margin-top:8px"><input type="file" id="xi_file" accept=".csv,.tsv,.txt"></div>
+  <div class="actions" style="justify-content:flex-start"><button type="button" id="xi_parse">Đọc dữ liệu</button></div>
+  <div id="xi_map"></div>
+  <div class="actions">
+    <button type="button" class="ghost" id="xi_cancel">Đóng</button>
+    <button type="button" id="xi_go" style="display:none">Nhập vào thư viện</button>
+  </div>
+</dialog>
+
 <!-- Nhập từ Google Sheets -->
 <dialog id="impDlg">
   <h2>Nhập khách từ Google Sheets</h2>
@@ -286,10 +302,16 @@ let tab = "clients", editingId = null, curId = null, progWeek = 0, addToSession 
 const openExtra = new Set();
 
 // ---------- lưu trữ ----------
+function migrate(d) {
+  const M = { "Lưng": "Lưng xô", "Tay trước": "Tay trước (Biceps)", "Tay sau": "Tay sau (Triceps)", "Đùi trước": "Đùi trước (Quads)", "Đùi sau": "Đùi sau (Hamstrings)", "Core": "Bụng", "Toàn thân": "Toàn thân / Cardio" };
+  d.exercises = d.exercises || []; d.schedule = d.schedule || [];
+  d.exercises.forEach(x => { if (M[x.group]) x.group = M[x.group]; });
+  return d;
+}
 function load() {
   try {
     const d = JSON.parse(localStorage.getItem(KEY));
-    if (d && Array.isArray(d.clients)) { d.exercises = d.exercises || []; d.schedule = d.schedule || []; return d; }
+    if (d && Array.isArray(d.clients)) return migrate(d);
   } catch (e) {}
   return { clients: [], exercises: [], schedule: [] };
 }
@@ -642,7 +664,7 @@ cv.addEventListener("change", e => {
 });
 
 // ---------- thêm bài vào buổi ----------
-const GROUPS = ["Ngực", "Lưng", "Vai", "Tay trước", "Tay sau", "Đùi trước", "Đùi sau", "Mông", "Bắp chân", "Core", "Toàn thân"];
+const GROUPS = ["Ngực", "Lưng xô", "Lưng dưới", "Cầu vai (Traps)", "Vai", "Tay trước (Biceps)", "Tay sau (Triceps)", "Cẳng tay", "Đùi trước (Quads)", "Đùi sau (Hamstrings)", "Mông", "Đùi trong / Đùi ngoài", "Bắp chân", "Bụng", "Toàn thân / Cardio"];
 const PATTERNS = ["Đẩy ngang", "Đẩy dọc", "Kéo ngang", "Kéo dọc", "Squat", "Hinge", "Lunge / đơn chân", "Cô lập", "Core / chống xoay", "Khác"];
 $("a_group").innerHTML = `<option value="">Tất cả nhóm</option>` + GROUPS.map(g => `<option>${g}</option>`).join("");
 function fillAddOptions() {
@@ -676,7 +698,7 @@ function renderEx() {
     .filter(x => !q || x.name.toLowerCase().includes(q) || (x.muscle || "").toLowerCase().includes(q) || (x.group || "").toLowerCase().includes(q))
     .sort((a, b) => (GROUPS.indexOf(a.group) - GROUPS.indexOf(b.group)) || a.name.localeCompare(b.name, "vi"));
   if (!items.length) {
-    $("exList").innerHTML = `<div class="empty">${data.exercises.length ? "Không có bài nào." : "Chưa có bài tập nào.<br>Bấm “+ Thêm bài tập”, hoặc nạp thư viện mẫu ở cuối trang."}</div>`;
+    $("exList").innerHTML = `<div class="empty">${data.exercises.length ? "Không có bài nào." : "Chưa có bài tập nào.<br>Bấm “+ Thêm bài tập”, hoặc bấm “Nạp danh sách bài tập” ở cuối trang."}</div>`;
     return;
   }
   $("exList").innerHTML = items.map(x => `
@@ -728,65 +750,42 @@ $("exDelete").onclick = () => {
   }
 };
 
-// Thư viện mẫu: [nhóm cơ, chuyển động, tên bài, [biến thể]]
-const SEED = [
-  ["Ngực","Đẩy ngang","Bench Press",["Barbell","Dumbbell","Smith Machine","Machine Chest Press"]],
-  ["Ngực","Đẩy ngang","Incline Press",["Barbell","Dumbbell","Smith Machine","Machine"]],
-  ["Ngực","Cô lập","Chest Fly",["Cable Fly","Low-to-High Cable Fly","Pec Deck","Dumbbell Fly"]],
-  ["Ngực","Đẩy ngang","Push-up",["Tiêu chuẩn","Incline (tay cao)","Deficit","Có tạ"]],
-  ["Ngực","Đẩy dọc","Dips",["Nghiêng người (ngực)","Có hỗ trợ","Có tạ"]],
-  ["Lưng","Kéo dọc","Pull-up",["Úp tay","Tay trung tính","Chin-up (ngửa tay)","Assisted","Có tạ"]],
-  ["Lưng","Kéo dọc","Lat Pulldown",["Tay rộng","Tay trung tính","Ngửa tay","Một tay"]],
-  ["Lưng","Kéo ngang","Seated Cable Row",["Tay trung tính","Tay rộng","Một tay"]],
-  ["Lưng","Kéo ngang","Barbell Row",["Úp tay","Ngửa tay","Pendlay"]],
-  ["Lưng","Kéo ngang","Chest-supported Row",["T-bar","Machine","Dumbbell trên ghế dốc"]],
-  ["Lưng","Kéo ngang","One-arm Dumbbell Row",["Chống ghế","Chống tay"]],
-  ["Lưng","Cô lập","Straight-arm Pulldown",["Dây thừng","Thanh thẳng"]],
-  ["Vai","Đẩy dọc","Shoulder Press",["Dumbbell ngồi","Barbell","Machine","Landmine"]],
-  ["Vai","Cô lập","Lateral Raise",["Dumbbell","Cable","Machine"]],
-  ["Vai","Cô lập","Rear Delt Fly",["Machine","Cable","Dumbbell cúi người","Face Pull"]],
-  ["Vai","Cô lập","Front Raise",["Dumbbell","Cable","Đĩa tạ"]],
-  ["Tay trước","Cô lập","Biceps Curl",["Dumbbell","EZ Bar","Cable","Incline Dumbbell","Preacher","Hammer"]],
-  ["Tay sau","Cô lập","Triceps Pressdown",["Dây thừng","Thanh thẳng","Một tay"]],
-  ["Tay sau","Cô lập","Overhead Triceps Extension",["Cable","Dumbbell","EZ Bar"]],
-  ["Tay sau","Cô lập","Skull Crusher",["EZ Bar","Dumbbell"]],
-  ["Đùi trước","Squat","Back Squat",["High-bar","Low-bar","Smith Machine","Box Squat"]],
-  ["Đùi trước","Squat","Front Squat",["Barbell","Zercher Squat"]],
-  ["Đùi trước","Squat","Goblet Squat",["Dumbbell","Kettlebell","Box Goblet Squat"]],
-  ["Đùi trước","Squat","Hack Squat",["Machine","Pendulum Squat","Reverse Hack Squat"]],
-  ["Đùi trước","Squat","Leg Press",["Tiêu chuẩn","Chân cao","Một chân"]],
-  ["Đùi trước","Cô lập","Leg Extension",["Hai chân","Một chân"]],
-  ["Đùi trước","Lunge / đơn chân","Split Squat",["Bulgarian Split Squat","Supported Split Squat","Smith Machine"]],
-  ["Đùi trước","Lunge / đơn chân","Lunge",["Reverse Lunge","Walking Lunge","Lunge tại chỗ"]],
-  ["Đùi trước","Lunge / đơn chân","Step-up",["Bậc thấp","Bậc cao","Có tạ"]],
-  ["Đùi sau","Hinge","Romanian Deadlift",["Barbell","Dumbbell","Một chân","Smith Machine"]],
-  ["Đùi sau","Cô lập","Leg Curl",["Lying Leg Curl","Seated Leg Curl","Nordic Curl"]],
-  ["Đùi sau","Hinge","Good Morning",["Barbell","Ngồi"]],
-  ["Toàn thân","Hinge","Deadlift",["Conventional","Sumo","Trap Bar"]],
-  ["Mông","Hinge","Hip Thrust",["Barbell","Machine","Smith Machine","Glute Bridge","B-stance (bodyweight)","Two-up/one-down (bodyweight)","Single-leg (bodyweight)","Single-leg Dumbbell","Single-leg Smith Machine","Single-leg Landmine","B-stance Barbell","Single-leg Dual-elevated"]],
-  ["Mông","Cô lập","Glute Kickback",["Cable","Machine","Quadruped"]],
-  ["Mông","Cô lập","Hip Abduction",["Machine","Cable","Banded"]],
-  ["Bắp chân","Cô lập","Calf Raise",["Đứng (Standing)","Ngồi (Seated)","Leg Press Calf Raise","Một chân"]],
-  ["Core","Core / chống xoay","Plank",["Tiêu chuẩn","Side Plank","Có tạ"]],
-  ["Core","Core / chống xoay","Dead Bug",["Tiêu chuẩn","Có tạ nhẹ"]],
-  ["Core","Core / chống xoay","Bird Dog",["Tiêu chuẩn","Có dây kháng lực"]],
-  ["Core","Core / chống xoay","Pallof Press",["Đứng","Quỳ","Half-kneeling"]],
-  ["Core","Core / chống xoay","Cable Crunch",["Quỳ","Có dây thừng"]],
-  ["Core","Core / chống xoay","Hanging Leg Raise",["Co gối","Duỗi thẳng chân"]],
-  ["Core","Core / chống xoay","Ab Wheel",["Quỳ","Đứng"]]
+// Danh sách bài tập lấy từ file Danh_sach_bai_tap.xlsx của anh: [nhóm cơ, [tên bài...]]
+const LIB = [
+  ["Ngực",["Barbell Bench Press","Incline Barbell Bench Press","Decline Barbell Bench Press","Close-Grip Bench Press","Wide-Grip Bench Press","Paused Bench Press","Floor Press","Dumbbell Bench Press","Incline Dumbbell Press","Decline Dumbbell Press","Neutral-Grip Dumbbell Press","Single-Arm Dumbbell Press","Smith Machine Bench Press","Smith Machine Incline Press","Smith Machine Decline Press","Machine Chest Press","Incline Machine Chest Press","Hammer Strength Chest Press","Dumbbell Fly","Incline Dumbbell Fly","Decline Dumbbell Fly","Pec Deck (Machine Fly)","Cable Crossover (High to Low)","Cable Crossover (Low to High)","Cable Fly (Mid)","Single-Arm Cable Fly","Svend Press","Dumbbell Pullover","Chest Dips","Weighted Dips","Assisted Dips","Push-Up","Wide Push-Up","Diamond Push-Up","Incline Push-Up","Decline Push-Up","Archer Push-Up","Clap Push-Up","Deficit Push-Up","Weighted Push-Up","Knee Push-Up"]],
+  ["Lưng xô",["Pull-Up","Chin-Up","Neutral-Grip Pull-Up","Wide-Grip Pull-Up","Weighted Pull-Up","Assisted Pull-Up","Negative Pull-Up","Lat Pulldown (Wide Grip)","Lat Pulldown (Close Grip)","Reverse-Grip Lat Pulldown","Neutral-Grip Lat Pulldown","Single-Arm Lat Pulldown","Behind-the-Neck Pulldown","Straight-Arm Pulldown","Cable Pullover","Barbell Bent-Over Row","Pendlay Row","Yates Row (Underhand Row)","Seal Row","T-Bar Row","Chest-Supported T-Bar Row","Landmine Row","Meadows Row","Dumbbell Row (Single-Arm)","Chest-Supported Dumbbell Row","Kroc Row","Seated Cable Row (Close Grip)","Seated Cable Row (Wide Grip)","Single-Arm Cable Row","Machine Row","Hammer Strength High Row","Hammer Strength Low Row","Inverted Row","Renegade Row","Smith Machine Row"]],
+  ["Lưng dưới",["Conventional Deadlift","Sumo Deadlift","Deficit Deadlift","Rack Pull","Trap Bar Deadlift","Snatch-Grip Deadlift","Good Morning","Seated Good Morning","Back Extension (Hyperextension)","45° Back Extension","Reverse Hyperextension","Superman","Bird Dog","Jefferson Curl"]],
+  ["Cầu vai (Traps)",["Barbell Shrug","Dumbbell Shrug","Trap Bar Shrug","Smith Machine Shrug","Cable Shrug","Behind-the-Back Barbell Shrug","Machine Shrug","Farmer's Walk","Upright Row (Barbell)","Upright Row (Cable)","Rack Pull Shrug","Y-Raise (Incline Bench)"]],
+  ["Vai",["Overhead Press (Barbell)","Seated Barbell Press","Push Press","Behind-the-Neck Press","Dumbbell Shoulder Press","Seated Dumbbell Shoulder Press","Arnold Press","Single-Arm Dumbbell Press","Landmine Press","Machine Shoulder Press","Smith Machine Shoulder Press","Z Press","Pike Push-Up","Handstand Push-Up","Dumbbell Lateral Raise","Seated Lateral Raise","Cable Lateral Raise","Single-Arm Cable Lateral Raise","Machine Lateral Raise","Lean-Away Lateral Raise","Lu Raise","Dumbbell Front Raise","Barbell Front Raise","Cable Front Raise","Plate Front Raise","Rear Delt Fly (Dumbbell)","Bent-Over Rear Delt Raise","Reverse Pec Deck","Cable Rear Delt Fly","Face Pull","Band Pull-Apart","Dumbbell Upright Row","Cuban Press","External Rotation (Cable)","External Rotation (Dumbbell)"]],
+  ["Tay trước (Biceps)",["Barbell Curl","EZ-Bar Curl","Wide-Grip Barbell Curl","Close-Grip Barbell Curl","Dumbbell Curl","Alternating Dumbbell Curl","Hammer Curl","Cross-Body Hammer Curl","Incline Dumbbell Curl","Concentration Curl","Preacher Curl (EZ-Bar)","Preacher Curl (Dumbbell)","Machine Preacher Curl","Spider Curl","Zottman Curl","Cable Curl","Rope Hammer Curl (Cable)","Bayesian Cable Curl","High Cable Curl","Single-Arm Cable Curl","Drag Curl","21s Curl","Reverse Curl","Chin-Up (Biceps Focus)","Resistance Band Curl"]],
+  ["Tay sau (Triceps)",["Close-Grip Bench Press","Skull Crusher (EZ-Bar)","Dumbbell Skull Crusher","JM Press","Tricep Pushdown (Straight Bar)","Tricep Pushdown (V-Bar)","Rope Pushdown","Reverse-Grip Pushdown","Single-Arm Cable Pushdown","Overhead Cable Tricep Extension","Overhead Dumbbell Extension","Single-Arm Overhead Dumbbell Extension","EZ-Bar Overhead Extension","Cable Kickback","Dumbbell Kickback","Tricep Dips","Bench Dips","Machine Tricep Extension","Machine Dips","Diamond Push-Up","Tate Press","Cross-Body Cable Extension"]],
+  ["Cẳng tay",["Wrist Curl (Barbell)","Wrist Curl (Dumbbell)","Reverse Wrist Curl","Behind-the-Back Wrist Curl","Reverse Curl (EZ-Bar)","Wrist Roller","Plate Pinch","Dead Hang","Farmer's Walk","Gripper Squeeze","Towel Pull-Up"]],
+  ["Đùi trước (Quads)",["Back Squat (High Bar)","Back Squat (Low Bar)","Front Squat","Pause Squat","Box Squat","Safety Bar Squat","Zercher Squat","Goblet Squat","Smith Machine Squat","Hack Squat (Machine)","Reverse Hack Squat","Pendulum Squat","Belt Squat","Leg Press","Single-Leg Leg Press","Leg Extension","Single-Leg Leg Extension","Bulgarian Split Squat","Split Squat","Forward Lunge","Reverse Lunge","Walking Lunge","Lateral Lunge","Step-Up","Sissy Squat","Heel-Elevated Goblet Squat","Pistol Squat","Wall Sit","Jump Squat","Cyclist Squat"]],
+  ["Đùi sau (Hamstrings)",["Romanian Deadlift (Barbell)","Romanian Deadlift (Dumbbell)","Single-Leg Romanian Deadlift","Stiff-Leg Deadlift","Good Morning","Lying Leg Curl","Seated Leg Curl","Standing Single-Leg Curl","Nordic Hamstring Curl","Glute-Ham Raise","Stability Ball Leg Curl","Slider Leg Curl","Cable Pull-Through","Kettlebell Swing","Cable Romanian Deadlift"]],
+  ["Mông",["Barbell Hip Thrust","Single-Leg Hip Thrust","Machine Hip Thrust","Smith Machine Hip Thrust","Glute Bridge","Single-Leg Glute Bridge","Frog Pump","Cable Kickback","Machine Glute Kickback","Donkey Kick","Fire Hydrant","Sumo Squat","Curtsy Lunge","Deficit Reverse Lunge","B-Stance Hip Thrust","45° Hyperextension (Glute Focus)","Step-Up (High Box)","Cable Pull-Through","Sumo Deadlift"]],
+  ["Đùi trong / Đùi ngoài",["Hip Adduction Machine","Hip Abduction Machine","Cable Hip Adduction","Cable Hip Abduction","Copenhagen Plank","Side-Lying Leg Raise","Banded Lateral Walk","Banded Clamshell","Cossack Squat","Wide-Stance Sumo Squat"]],
+  ["Bắp chân",["Standing Calf Raise (Machine)","Seated Calf Raise","Smith Machine Calf Raise","Leg Press Calf Raise","Single-Leg Dumbbell Calf Raise","Donkey Calf Raise","Barbell Calf Raise","Bodyweight Calf Raise","Tibialis Raise","Jump Rope"]],
+  ["Bụng",["Crunch","Bicycle Crunch","Reverse Crunch","Cable Crunch","Machine Crunch","Decline Crunch","Sit-Up","Weighted Sit-Up","V-Up","Toe Touch","Hanging Leg Raise","Hanging Knee Raise","Captain's Chair Knee Raise","Lying Leg Raise","Toes-to-Bar","Ab Wheel Rollout","Plank","Side Plank","Weighted Plank","Plank Shoulder Tap","Dead Bug","Hollow Body Hold","Mountain Climber","Russian Twist","Cable Woodchopper","Pallof Press","Heel Touch","Flutter Kick","Dragon Flag","L-Sit","Windshield Wiper","Stomach Vacuum"]],
+  ["Toàn thân / Cardio",["Burpee","Clean and Press","Power Clean","Hang Clean","Snatch","Thruster","Kettlebell Swing","Turkish Get-Up","Battle Rope","Sled Push","Sled Pull","Box Jump","Jumping Jack","High Knees","Treadmill Run","Incline Treadmill Walk","Stationary Bike","Rowing Machine","Elliptical","Stair Climber","Jump Rope"]]
 ];
-function loadSeed() {
-  const have = new Set(data.exercises.map(x => x.name.toLowerCase()));
-  let n = 0;
-  SEED.forEach(([group, pattern, name, variations], i) => {
-    if (have.has(name.toLowerCase())) return;
-    data.exercises.push({ id: "e" + Date.now() + "_" + i, name, group, pattern, muscle: "", variations, regress: "", alt: "", note: "", video: "" });
+const LIB_TOTAL = LIB.reduce((n, g) => n + g[1].length, 0);
+function loadLib() {
+  const have = new Set(data.exercises.map(x => (x.group || "") + "|" + x.name.toLowerCase()));
+  let n = 0, dup = 0;
+  LIB.forEach(([group, names], gi) => names.forEach((name, i) => {
+    const k = group + "|" + name.toLowerCase();
+    if (have.has(k)) { dup++; return; }
+    have.add(k);
+    data.exercises.push({ id: "e" + uid() + gi + "_" + i, name, group, pattern: "", muscle: "", variations: [], regress: "", alt: "", note: "", video: "" });
     n++;
-  });
+  }));
   save(); renderEx();
-  alert(n ? `Đã thêm ${n} bài mẫu. Anh có thể sửa hoặc xóa tùy ý.` : "Các bài mẫu đã có sẵn rồi.");
+  alert(`Đã thêm ${n} bài tập vào thư viện.${dup ? ` Bỏ qua ${dup} bài đã có.` : ""}`);
 }
-$("btnSeed").onclick = () => { if (confirm("Thêm khoảng 40 bài tập mẫu vào thư viện? Bài đã có sẽ không bị trùng.")) { loadSeed(); setTab("exercises"); renderEx(); } };
+$("btnSeed").onclick = () => { if (confirm(`Nạp ${LIB_TOTAL} bài tập từ file Excel của anh vào thư viện? Bài đã có (cùng tên, cùng nhóm cơ) sẽ không bị trùng.`)) { loadLib(); setTab("exercises"); renderEx(); } };
+$("btnClearEx").onclick = () => {
+  if (data.exercises.length && confirm(`Xóa toàn bộ ${data.exercises.length} bài trong thư viện? Giáo án đã soạn vẫn giữ nguyên tên bài. Không thể hoàn tác (hãy sao lưu trước nếu cần).`)) { data.exercises = []; save(); renderEx(); }
+};
 
 // ---------- sao lưu / khôi phục ----------
 $("btnExport").onclick = () => {
@@ -803,7 +802,7 @@ $("fileImport").onchange = async e => {
   try {
     const d = JSON.parse(await f.text());
     if (!d || !Array.isArray(d.clients)) throw new Error();
-    d.exercises = d.exercises || []; d.schedule = d.schedule || [];
+    migrate(d);
     if (confirm(`Khôi phục ${d.clients.length} khách và ${d.exercises.length} bài tập từ file? Dữ liệu hiện tại sẽ bị thay thế.`)) { data = d; save(); setTab("clients"); render(); renderEx(); }
   } catch (err) { alert("File không hợp lệ."); }
   e.target.value = "";
@@ -883,6 +882,70 @@ $("imp_go").onclick = () => {
   });
   save(); render(); $("impDlg").close();
   alert(`Đã nhập ${added} khách.${dup ? ` Bỏ qua ${dup} khách đã có (trùng tên và SĐT).` : ""}\nHãy mở vài khách để kiểm tra ngày tháng và số liệu.`);
+};
+
+// ---------- nhập bài tập từ Excel / Sheets ----------
+const XI_FIELDS = [
+  ["group", "Nhóm cơ chính", ["nhóm cơ", "nhóm", "muscle group", "group"]],
+  ["pattern", "Chuyển động", ["chuyển động", "kiểu", "pattern", "movement"]],
+  ["name", "Tên bài tập *", ["tên bài", "bài tập", "exercise", "tên", "name"]],
+  ["vars", "Biến thể", ["biến thể", "variation", "variant"]],
+  ["regress", "Bài dễ hơn (Regression)", ["dễ hơn", "regression"]],
+  ["alt", "Bài thay thế (Alternative)", ["thay thế", "alternative"]],
+  ["muscle", "Cơ phụ / phần được tập", ["phần được tập", "cơ phụ", "cơ"]],
+  ["note", "Ghi chú kỹ thuật", ["ghi chú", "kỹ thuật", "note"]],
+  ["video", "Link video", ["video", "link"]]
+];
+const nz = s => String(s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/đ/g, "d").trim();
+const matchList = (v, list) => {
+  const a = nz(v); if (!a) return "";
+  return list.find(x => nz(x) === a) || (a.length >= 3 ? list.find(x => nz(x).startsWith(a) || a.startsWith(nz(x))) : "") || "";
+};
+let xiRows = [];
+function xiParse() {
+  xiRows = parseTable($("xi_text").value);
+  if (xiRows.length < 2) { $("xi_map").innerHTML = `<div class="muted">Chưa đọc được dữ liệu. Cần ít nhất 1 hàng tiêu đề và 1 hàng bài tập.</div>`; $("xi_go").style.display = "none"; return; }
+  const head = xiRows[0].map(h => h.trim()), low = head.map(h => h.toLowerCase()), used = new Set();
+  const opts = sel => `<option value="-1">— Bỏ qua —</option>` + head.map((h, i) => `<option value="${i}" ${i === sel ? "selected" : ""}>${esc(h || "(cột " + (i + 1) + ")")}</option>`).join("");
+  $("xi_map").innerHTML = `<h3>Ghép cột (kiểm tra lại cho đúng)</h3>` + XI_FIELDS.map(([k, label, keys]) => {
+    let sel = -1;
+    for (const kw of keys) { const i = low.findIndex((h, j) => !used.has(j) && h.includes(kw)); if (i >= 0) { sel = i; break; } }
+    if (sel >= 0) used.add(sel);
+    return `<label>${label}</label><select data-k="${k}">${opts(sel)}</select>`;
+  }).join("") + `<div class="muted" style="margin-top:8px">Tìm thấy ${xiRows.length - 1} dòng dữ liệu.</div>`;
+  $("xi_go").style.display = "";
+}
+$("btnImpEx").onclick = () => { $("xi_text").value = ""; $("xi_map").innerHTML = ""; $("xi_go").style.display = "none"; $("xiDlg").showModal(); };
+$("xi_cancel").onclick = () => $("xiDlg").close();
+$("xi_parse").onclick = xiParse;
+$("xi_file").onchange = async e => { const f = e.target.files[0]; if (f) { $("xi_text").value = await f.text(); xiParse(); } e.target.value = ""; };
+$("xi_go").onclick = () => {
+  const map = {}; $("xi_map").querySelectorAll("select").forEach(s => map[s.dataset.k] = +s.value);
+  if (map.name < 0) { alert("Hãy chọn cột Tên bài tập."); return; }
+  const get = (r, k) => map[k] >= 0 ? (r[map[k]] || "").trim() : "";
+  const byName = new Map(data.exercises.map(x => [x.name.toLowerCase(), x]));
+  const touched = new Set(), badG = new Set(), badP = new Set();
+  let added = 0, merged = 0;
+  xiRows.slice(1).forEach(r => {
+    const name = get(r, "name"); if (!name) return;
+    let ex = byName.get(name.toLowerCase());
+    if (!ex) {
+      ex = { id: "e" + uid(), name, group: "", pattern: "", muscle: "", variations: [], regress: "", alt: "", note: "", video: "" };
+      data.exercises.push(ex); byName.set(name.toLowerCase(), ex); added++; touched.add(ex);
+    } else if (!touched.has(ex)) { merged++; touched.add(ex); }
+    const g = get(r, "group"), pt = get(r, "pattern");
+    if (g) { const m = matchList(g, GROUPS); if (m) ex.group = m; else { badG.add(g); if (!ex.muscle) ex.muscle = g; } }
+    if (pt) { const m = matchList(pt, PATTERNS); if (m) ex.pattern = m; else badP.add(pt); }
+    get(r, "vars").split(/[;|\n,]+/).map(s => s.trim()).filter(Boolean).forEach(v => {
+      if (!ex.variations.some(z => z.toLowerCase() === v.toLowerCase())) ex.variations.push(v);
+    });
+    [["regress", "regress"], ["alt", "alt"], ["muscle", "muscle"], ["note", "note"], ["video", "video"]].forEach(([k, f]) => { const v = get(r, k); if (v && !ex[f]) ex[f] = v; });
+  });
+  save(); renderEx(); $("xiDlg").close(); setTab("exercises");
+  let msg = `Đã thêm ${added} bài mới${merged ? `, cập nhật ${merged} bài đã có (thêm biến thể mới)` : ""}.`;
+  if (badG.size) msg += `\n\nNhóm cơ không khớp danh sách của app (đã chuyển vào ô "cơ phụ"): ${[...badG].join(", ")}.\nNhóm của app: ${GROUPS.join(", ")}.`;
+  if (badP.size) msg += `\n\nChuyển động không khớp (để trống): ${[...badP].join(", ")}.\nChuyển động của app: ${PATTERNS.join(", ")}.`;
+  alert(msg);
 };
 
 // ---------- khởi động ----------
