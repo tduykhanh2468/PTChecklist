@@ -343,6 +343,17 @@ function migrate(d) {
   const M = { "Lưng": "Lưng xô", "Tay trước": "Tay trước (Biceps)", "Tay sau": "Tay sau (Triceps)", "Đùi trước": "Đùi trước (Quads)", "Đùi sau": "Đùi sau (Hamstrings)", "Core": "Bụng", "Toàn thân": "Toàn thân / Cardio" };
   d.exercises = d.exercises || []; d.schedule = d.schedule || [];
   d.exercises.forEach(x => { if (M[x.group]) x.group = M[x.group]; });
+  const cardio = new Set(d.exercises.filter(x => x.group === "Toàn thân / Cardio").map(x => String(x.name).toLowerCase()));
+  d.exercises = d.exercises.filter(x => {
+    if (x.group === "Mang vác") { x.group = "Mang vác (Carry)"; if (!x.pattern) x.pattern = "Carry (mang vác)"; }
+    if (x.group === "HIIT") {
+      const k = String(x.name).toLowerCase();
+      if (cardio.has(k)) return false;
+      cardio.add(k); x.group = "Toàn thân / Cardio";
+      if (!/^hiit/i.test(x.muscle || "")) x.muscle = "HIIT" + (x.muscle ? " · " + x.muscle : "");
+    }
+    return true;
+  });
   return d;
 }
 function load() {
@@ -738,8 +749,8 @@ cv.addEventListener("change", e => {
 });
 
 // ---------- thêm bài vào buổi ----------
-const GROUPS = ["Ngực", "Lưng xô", "Lưng dưới", "Cầu vai (Traps)", "Vai", "Tay trước (Biceps)", "Tay sau (Triceps)", "Cẳng tay", "Đùi trước (Quads)", "Đùi sau (Hamstrings)", "Mông", "Đùi trong / Đùi ngoài", "Bắp chân", "Bụng", "Toàn thân / Cardio"];
-const PATTERNS = ["Đẩy ngang", "Đẩy dọc", "Kéo ngang", "Kéo dọc", "Squat", "Hinge", "Lunge / đơn chân", "Cô lập", "Core / chống xoay", "Khác"];
+const GROUPS = ["Ngực", "Lưng xô", "Lưng dưới", "Cầu vai (Traps)", "Vai", "Tay trước (Biceps)", "Tay sau (Triceps)", "Cẳng tay", "Đùi trước (Quads)", "Đùi sau (Hamstrings)", "Mông", "Đùi trong / Đùi ngoài", "Bắp chân", "Bụng", "Toàn thân / Cardio", "Mang vác (Carry)"];
+const PATTERNS = ["Đẩy ngang", "Đẩy dọc", "Kéo ngang", "Kéo dọc", "Squat", "Hinge", "Lunge / đơn chân", "Cô lập", "Core / chống xoay", "Carry (mang vác)", "Khác"];
 // Hộp thêm bài: gõ để tìm, lọc theo nhóm cơ, chạm để thêm (chạm lần nữa để bỏ), thêm nhiều bài rồi bấm Xong
 let addCtx = null, addGroup = "";
 $("a_group").innerHTML = `<option value="">Tất cả nhóm cơ</option>` + GROUPS.map(g => `<option>${g}</option>`).join("");
@@ -769,10 +780,10 @@ function renderAddList() {
     return;
   }
   const q = $("a_q").value, g = $("a_group").value;
-  const list = addOptions().filter(o => (!g || o.ex.group === g) && matchText(q, o.label, o.ex.group)).sort((a, b) => a.label.localeCompare(b.label, "vi"));
+  const list = addOptions().filter(o => (!g || o.ex.group === g) && matchText(q, o.label, o.ex.group, o.ex.muscle)).sort((a, b) => a.label.localeCompare(b.label, "vi"));
   addInfo(list.length);
   $("a_list").innerHTML = list.slice(0, 200).map(o => `<button type="button" class="prow ${addCtx.added.has(o.key) ? "added" : ""}" data-k="${esc(o.key)}">
-      <span>${esc(o.label)}<br><small>${esc(o.ex.group || "")}</small></span><span class="pst">${addStatus(o, sess)}</span></button>`).join("")
+      <span>${esc(o.label)}<br><small>${esc([o.ex.group, o.ex.muscle].filter(Boolean).join(" · "))}</small></span><span class="pst">${addStatus(o, sess)}</span></button>`).join("")
     + (list.length > 200 ? `<div class="muted" style="padding:8px 4px">… còn ${list.length - 200} bài nữa, hãy gõ để lọc bớt.</div>` : "")
     || `<div class="muted" style="padding:10px 4px">Không có bài nào khớp.</div>`;
 }
@@ -873,7 +884,7 @@ $("exDelete").onclick = () => {
   }
 };
 
-// Danh sách bài tập lấy từ file Danh_sach_bai_tap.xlsx của anh: [nhóm cơ, [tên bài...]]
+// Danh sách bài tập từ các file Excel của anh (Danh_sach_bai_tap.xlsx, Mang_vac_va_HIIT.xlsx): [nhóm, [tên bài...], nhóm nhỏ]
 const LIB = [
   ["Ngực",["Barbell Bench Press","Incline Barbell Bench Press","Decline Barbell Bench Press","Close-Grip Bench Press","Wide-Grip Bench Press","Paused Bench Press","Floor Press","Dumbbell Bench Press","Incline Dumbbell Press","Decline Dumbbell Press","Neutral-Grip Dumbbell Press","Single-Arm Dumbbell Press","Smith Machine Bench Press","Smith Machine Incline Press","Smith Machine Decline Press","Machine Chest Press","Incline Machine Chest Press","Hammer Strength Chest Press","Dumbbell Fly","Incline Dumbbell Fly","Decline Dumbbell Fly","Pec Deck (Machine Fly)","Cable Crossover (High to Low)","Cable Crossover (Low to High)","Cable Fly (Mid)","Single-Arm Cable Fly","Svend Press","Dumbbell Pullover","Chest Dips","Weighted Dips","Assisted Dips","Push-Up","Wide Push-Up","Diamond Push-Up","Incline Push-Up","Decline Push-Up","Archer Push-Up","Clap Push-Up","Deficit Push-Up","Weighted Push-Up","Knee Push-Up"]],
   ["Lưng xô",["Pull-Up","Chin-Up","Neutral-Grip Pull-Up","Wide-Grip Pull-Up","Weighted Pull-Up","Assisted Pull-Up","Negative Pull-Up","Lat Pulldown (Wide Grip)","Lat Pulldown (Close Grip)","Reverse-Grip Lat Pulldown","Neutral-Grip Lat Pulldown","Single-Arm Lat Pulldown","Behind-the-Neck Pulldown","Straight-Arm Pulldown","Cable Pullover","Barbell Bent-Over Row","Pendlay Row","Yates Row (Underhand Row)","Seal Row","T-Bar Row","Chest-Supported T-Bar Row","Landmine Row","Meadows Row","Dumbbell Row (Single-Arm)","Chest-Supported Dumbbell Row","Kroc Row","Seated Cable Row (Close Grip)","Seated Cable Row (Wide Grip)","Single-Arm Cable Row","Machine Row","Hammer Strength High Row","Hammer Strength Low Row","Inverted Row","Renegade Row","Smith Machine Row"]],
@@ -889,17 +900,28 @@ const LIB = [
   ["Đùi trong / Đùi ngoài",["Hip Adduction Machine","Hip Abduction Machine","Cable Hip Adduction","Cable Hip Abduction","Copenhagen Plank","Side-Lying Leg Raise","Banded Lateral Walk","Banded Clamshell","Cossack Squat","Wide-Stance Sumo Squat"]],
   ["Bắp chân",["Standing Calf Raise (Machine)","Seated Calf Raise","Smith Machine Calf Raise","Leg Press Calf Raise","Single-Leg Dumbbell Calf Raise","Donkey Calf Raise","Barbell Calf Raise","Bodyweight Calf Raise","Tibialis Raise","Jump Rope"]],
   ["Bụng",["Crunch","Bicycle Crunch","Reverse Crunch","Cable Crunch","Machine Crunch","Decline Crunch","Sit-Up","Weighted Sit-Up","V-Up","Toe Touch","Hanging Leg Raise","Hanging Knee Raise","Captain's Chair Knee Raise","Lying Leg Raise","Toes-to-Bar","Ab Wheel Rollout","Plank","Side Plank","Weighted Plank","Plank Shoulder Tap","Dead Bug","Hollow Body Hold","Mountain Climber","Russian Twist","Cable Woodchopper","Pallof Press","Heel Touch","Flutter Kick","Dragon Flag","L-Sit","Windshield Wiper","Stomach Vacuum"]],
-  ["Toàn thân / Cardio",["Burpee","Clean and Press","Power Clean","Hang Clean","Snatch","Thruster","Kettlebell Swing","Turkish Get-Up","Battle Rope","Sled Push","Sled Pull","Box Jump","Jumping Jack","High Knees","Treadmill Run","Incline Treadmill Walk","Stationary Bike","Rowing Machine","Elliptical","Stair Climber","Jump Rope"]]
+  ["Toàn thân / Cardio",["Burpee","Clean and Press","Power Clean","Hang Clean","Snatch","Thruster","Kettlebell Swing","Turkish Get-Up","Battle Rope","Sled Push","Sled Pull","Box Jump","Jumping Jack","High Knees","Treadmill Run","Incline Treadmill Walk","Stationary Bike","Rowing Machine","Elliptical","Stair Climber","Jump Rope"]],
+  ["Mang vác (Carry)",["Farmer's Walk (Dumbbell)","Farmer's Walk (Kettlebell)","Farmer's Walk (Trap Bar)","Farmer's Walk (Farmer Handles)","Heavy Farmer's Hold (Static)","Farmer's Walk on Toes","Farmer's Walk Backward","Farmer's Walk Up Stairs","Fat Grip Farmer's Walk","Plate Pinch Carry"],"Hai tay bên hông"],
+  ["Mang vác (Carry)",["Suitcase Carry (Dumbbell)","Suitcase Carry (Kettlebell)","Suitcase Carry (Barbell)","Offset Carry (Heavy + Light)","Single-Arm Farmer's Hold (Static)"],"Một tay"],
+  ["Mang vác (Carry)",["Goblet Carry","Kettlebell Front Rack Carry (Double)","Kettlebell Front Rack Carry (Single)","Zercher Carry","Sandbag Bear Hug Carry","Atlas Stone Carry","Plate Hug Carry","Barbell Front Rack Carry","Kettlebell Bottoms-Up Carry"],"Trước ngực / Ôm"],
+  ["Mang vác (Carry)",["Overhead Carry (Dumbbell, Single-Arm)","Overhead Carry (Dumbbell, Double)","Overhead Carry (Kettlebell)","Overhead Plate Carry","Overhead Barbell Carry","Waiter's Walk","Mixed Carry (Overhead + Suitcase)","Mixed Carry (Rack + Suitcase)"],"Trên đầu"],
+  ["Mang vác (Carry)",["Sandbag Shoulder Carry","Yoke Carry","Barbell Back Rack Carry","Safety Bar Carry","Keg Carry","Fireman's Carry (Partner)","Sandbag Over-Shoulder Toss"],"Trên vai / Lưng"],
+  ["Mang vác (Carry)",["Sled Push (Heavy)","Sled Push (Sprint)","Sled Pull (Forward)","Sled Drag (Backward)","Lateral Sled Drag","Sled Rope Pull (Hand-over-Hand)","Prowler Push","Car Push","Tire Flip","Sandbag Drag"],"Kéo / Đẩy"],
+  ["Toàn thân / Cardio",["Burpee Broad Jump","Burpee Tuck Jump","Half Burpee (No Push-Up)","Seal Jack","Star Jump","Butt Kicks","Mountain Climber","Cross-Body Mountain Climber","Jump Squat","Squat Pulse","Jump Lunge (Split Jump)","Skater Jump","Tuck Jump","Broad Jump","Lateral Hop","Plank Jack","Plank to Push-Up","Plank Shoulder Tap","Bear Crawl","Crab Walk","Inchworm","Inchworm with Push-Up","Sprawl","Frog Jump","Speed Skater","Fast Feet Shuffle","Lateral Shuffle","Shadow Boxing","Shadow Boxing with Squat","Sprint in Place","Hollow Body Rock","Clap Push-Up","Spiderman Push-Up","Pop Squat","Ski Jump (Side-to-Side)"],"HIIT · Không dụng cụ"],
+  ["Toàn thân / Cardio",["Kettlebell Swing (Russian)","Kettlebell Swing (American)","Single-Arm Kettlebell Swing","Kettlebell Snatch","Kettlebell Clean and Press","Kettlebell Goblet Squat Pulse","Dumbbell Thruster","Barbell Thruster","Dumbbell Snatch (Alternating)","Dumbbell Clean and Jerk","Devil Press","Man Maker","Renegade Row","Wall Ball","Medicine Ball Slam","Medicine Ball Rotational Throw","Medicine Ball Chest Pass","Battle Rope Waves (Double)","Battle Rope Alternating Waves","Battle Rope Slams","Battle Rope Side-to-Side","Box Step-Over","Lateral Box Jump","Jump Rope (Basic)","Jump Rope Double Unders","Jump Rope High Knees","Agility Ladder Drills","Cone Drill Sprints","Slam Ball Squat Throw","Sandbag Clean","Sandbag Ground-to-Shoulder","Resistance Band Sprint","TRX Jump Squat"],"HIIT · Dụng cụ"],
+  ["Toàn thân / Cardio",["Assault Bike Sprint","Air Bike Intervals","Stationary Bike Sprint","Spin Bike Tabata","Rowing Machine Sprint","Rowing Machine 500m Intervals","SkiErg Sprint","Treadmill Sprint Intervals","Incline Treadmill Sprint","Curved Treadmill Sprint","Stair Climber Intervals","Elliptical Intervals","VersaClimber Sprint"],"HIIT · Máy cardio"],
+  ["Toàn thân / Cardio",["Hill Sprint","Shuttle Run","Suicide Sprint","100m Sprint Repeats","400m Repeats","Fartlek Run","Stair Sprint","Bleacher Run","Sprint and Walk Intervals"],"HIIT · Chạy / Ngoài trời"],
+  ["Toàn thân / Cardio",["Tabata (20s tập / 10s nghỉ x 8)","EMOM (Mỗi phút 1 hiệp)","AMRAP (Tối đa số vòng)","For Time (Hoàn thành nhanh nhất)","Circuit Training","30/30 Intervals","40/20 Intervals","Ladder (Tăng dần số lần)","Death by Burpees","Chipper Workout","Partner Relay"],"HIIT · Định dạng buổi tập"]
 ];
 const LIB_TOTAL = LIB.reduce((n, g) => n + g[1].length, 0);
 function loadLib() {
   const have = new Set(data.exercises.map(x => (x.group || "") + "|" + x.name.toLowerCase()));
   let n = 0, dup = 0;
-  LIB.forEach(([group, names], gi) => names.forEach((name, i) => {
+  LIB.forEach(([group, names, sub], gi) => names.forEach((name, i) => {
     const k = group + "|" + name.toLowerCase();
     if (have.has(k)) { dup++; return; }
     have.add(k);
-    data.exercises.push({ id: "e" + uid() + gi + "_" + i, name, group, pattern: "", muscle: "", variations: [], regress: "", alt: "", note: "", video: "" });
+    data.exercises.push({ id: "e" + uid() + gi + "_" + i, name, group, pattern: group === "Mang vác (Carry)" ? "Carry (mang vác)" : "", muscle: sub || "", variations: [], regress: "", alt: "", note: "", video: "" });
     n++;
   }));
   save(); renderEx();
@@ -1025,6 +1047,15 @@ const matchList = (v, list) => {
   return list.find(x => nz(x) === a) || (a.length >= 3 ? list.find(x => nz(x).startsWith(a) || a.startsWith(nz(x))) : "") || "";
 };
 let xiRows = [];
+// "HIIT - Máy cardio" → Toàn thân / Cardio (ghi chú "HIIT · Máy cardio"); "Mang vác - Một tay" → Mang vác (Carry) (ghi chú "Một tay")
+function canonGroup(v) {
+  const n = nz(v), sub = String(v).split(/\s+-\s+/).slice(1).join(" - ").trim();
+  if (/^hiit\b/.test(n)) return { g: "Toàn thân / Cardio", sub: "HIIT" + (sub ? " · " + sub : "") };
+  if (/^(mang vac|carry)\b/.test(n)) return { g: "Mang vác (Carry)", sub };
+  if (/^cardio\b/.test(n)) return { g: "Toàn thân / Cardio", sub };
+  const m = matchList(v, GROUPS);
+  return m ? { g: m, sub: "" } : null;
+}
 function xiParse() {
   xiRows = parseTable($("xi_text").value);
   if (xiRows.length < 2) { $("xi_map").innerHTML = `<div class="muted">Chưa đọc được dữ liệu. Cần ít nhất 1 hàng tiêu đề và 1 hàng bài tập.</div>`; $("xi_go").style.display = "none"; return; }
@@ -1057,7 +1088,11 @@ $("xi_go").onclick = () => {
       data.exercises.push(ex); byName.set(name.toLowerCase(), ex); added++; touched.add(ex);
     } else if (!touched.has(ex)) { merged++; touched.add(ex); }
     const g = get(r, "group"), pt = get(r, "pattern");
-    if (g) { const m = matchList(g, GROUPS); if (m) ex.group = m; else { badG.add(g); if (!ex.muscle) ex.muscle = g; } }
+    if (g) {
+      const cg = canonGroup(g);
+      if (cg) { ex.group = cg.g; if (cg.sub && !ex.muscle) ex.muscle = cg.sub; if (cg.g === "Mang vác (Carry)" && !ex.pattern) ex.pattern = "Carry (mang vác)"; }
+      else { badG.add(g); if (!ex.muscle) ex.muscle = g; }
+    }
     if (pt) { const m = matchList(pt, PATTERNS); if (m) ex.pattern = m; else badP.add(pt); }
     get(r, "vars").split(/[;|\n,]+/).map(s => s.trim()).filter(Boolean).forEach(v => {
       if (!ex.variations.some(z => z.toLowerCase() === v.toLowerCase())) ex.variations.push(v);
