@@ -173,6 +173,18 @@
   .prow.added { background:var(--accent-soft); }
   .prow.added .pst { color:var(--ok); }
 
+  /* Lịch: tháng → tuần → ngày */
+  .calhead { display:flex; align-items:center; gap:4px; }
+  .calhead .ttl { flex:1; text-align:center; font-family:var(--font-display); font-weight:700; font-size:22px; letter-spacing:.03em; text-transform:uppercase; }
+  .calhead button.x { font-size:24px; line-height:1; padding:4px 14px; }
+  .wkchips { display:flex; gap:6px; flex-wrap:wrap; margin:10px 0 4px; }
+  .wksum { font-size:13px; color:var(--muted); margin:6px 0 2px; }
+  .dayh { font-size:12px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; padding:12px 0 4px; margin-top:6px; border-top:1px solid var(--line); }
+  .dayh.now { color:var(--brand); }
+  .dayh.rest { font-weight:500; padding:9px 0 3px; }
+  .dayh span { text-transform:none; letter-spacing:0; font-weight:400; }
+  .dayh + .trow { border-top:0; padding-top:4px; }
+
   /* Sinh nhật */
   .bday { background:var(--accent-soft); border-radius:10px; padding:6px 10px; margin-bottom:10px; }
   .bline { display:flex; align-items:center; justify-content:space-between; gap:6px 8px; flex-wrap:wrap; padding:5px 0; font-size:14px; }
@@ -180,6 +192,27 @@
   .bline b { font-weight:600; }
   .bsoon { cursor:pointer; }
   a.btnlink { display:inline-block; text-decoration:none; font-weight:600; font-size:13px; padding:5px 11px; border-radius:10px; background:var(--card); color:var(--text); border:1px solid var(--line); }
+
+  /* Số đo & hình ảnh */
+  details.bodybox { margin-top:0; }
+  details.bodybox > summary { list-style:none; display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  details.bodybox > summary::-webkit-details-marker { display:none; }
+  details.bodybox > summary::after { content:"▾"; color:var(--muted); }
+  details.bodybox[open] > summary::after { content:"▴"; }
+  .mtable td:not(:first-child), .mtable th:not(:first-child) { text-align:right; }
+  .mtable small { font-weight:400; }
+  .thumbs { display:flex; gap:6px; flex-wrap:wrap; }
+  img.thumb { width:72px; height:96px; object-fit:cover; border-radius:8px; background:var(--surface-2); border:1px solid var(--line); cursor:pointer; display:block; }
+  .ba { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+  .ba .cap { font-size:12px; color:var(--muted); margin-bottom:4px; font-weight:600; }
+  .mgrid { display:grid; grid-template-columns:1fr 1fr; gap:0 10px; }
+  .mgrid label { margin:10px 0 4px; }
+  .pgrid { display:flex; gap:8px; flex-wrap:wrap; }
+  .pitem { position:relative; }
+  .pitem button { position:absolute; top:3px; right:3px; padding:2px 7px; border-radius:99px; background:rgba(0,0,0,.65); color:#fff; font-size:12px; border:0; }
+  #photoDlg { margin:auto; border-radius:16px; max-height:calc(100vh - 24px); }
+  #photoDlg::before { display:none; }
+  #ph_img { display:block; max-width:100%; max-height:78vh; margin:0 auto; border-radius:10px; }
 
   /* Thông báo nhỏ + hoàn tác */
   .toast { position:fixed; left:16px; right:16px; bottom:calc(84px + env(safe-area-inset-bottom,0px)); max-width:528px; margin:0 auto; z-index:30; background:var(--text); color:var(--bg); border-radius:12px; padding:8px 8px 8px 16px; display:flex; align-items:center; justify-content:space-between; gap:12px; box-shadow:0 6px 20px rgba(0,0,0,.25); font-size:14px; min-height:48px; }
@@ -200,8 +233,8 @@
 
 <main>
   <div class="view on" id="view-clients">
-    <div id="todayBox"></div>
     <div class="toolbar"><input id="search" type="search" placeholder="Tìm theo tên hoặc số điện thoại..."></div>
+    <div id="todayBox"></div>
     <div id="list"></div>
   </div>
 
@@ -302,6 +335,41 @@
   <select id="a_group" style="margin-top:8px" aria-label="Lọc theo nhóm cơ"></select>
   <div class="muted" id="a_info"></div>
   <div id="a_list" class="pick"></div>
+</dialog>
+
+<!-- Số đo & hình ảnh (mỗi lần đo một bản ghi; lần đầu = đầu vào) -->
+<dialog id="bodyDlg">
+  <div class="row" style="align-items:flex-start">
+    <h2 id="b_title" style="margin:0">Số đo đầu vào</h2>
+    <button type="button" class="sm ghost" id="b_x" autofocus>Đóng</button>
+  </div>
+  <label>Ngày đo</label>
+  <input id="b_date" type="date">
+  <div class="mgrid" id="b_fields"></div>
+  <label>Ghi chú</label>
+  <textarea id="b_note" placeholder="VD: đo buổi sáng, trước khi ăn..."></textarea>
+  <label>Ảnh toàn thân</label>
+  <div class="pgrid" id="b_photos"></div>
+  <input type="file" id="b_file" accept="image/*" multiple hidden>
+  <div class="actions" style="justify-content:flex-start;align-items:center;margin-top:10px">
+    <button type="button" class="ghost" id="b_add">📷 Thêm ảnh (chụp hoặc chọn)</button>
+    <span class="muted" id="b_busy" style="margin:0"></span>
+  </div>
+  <div class="actions">
+    <button type="button" class="danger" id="b_del">Xóa lần đo</button>
+    <span class="spacer"></span>
+    <button type="button" class="ghost" id="b_cancel">Hủy</button>
+    <button type="button" id="b_save">Lưu</button>
+  </div>
+</dialog>
+
+<!-- Xem ảnh lớn -->
+<dialog id="photoDlg">
+  <div class="row" style="margin-bottom:8px">
+    <span class="name" id="ph_cap"></span>
+    <button type="button" class="sm" id="ph_close" autofocus>Đóng</button>
+  </div>
+  <img id="ph_img" alt="Ảnh toàn thân của khách">
 </dialog>
 
 <!-- Nhập bài tập từ Excel / Sheets -->
@@ -443,7 +511,7 @@ $("btnAdd").onclick = () => tab === "clients" ? openForm() : openEx();
 
 // ---------- danh sách khách ----------
 function render() {
-  renderToday();
+  renderCal();
   const q = $("search").value;
   const items = data.clients
     .filter(c => matchText(q, c.name, c.phone))
@@ -513,9 +581,11 @@ $("form").onsubmit = () => {
 $("btnDelete").onclick = () => {
   const c = data.clients.find(x => x.id === editingId);
   if (c && confirm(`Xóa khách "${c.name}" cùng toàn bộ giáo án và điểm danh? Không thể hoàn tác.`)) {
+    const pids = (c.body || []).flatMap(b => b.photos || []);
     data.clients = data.clients.filter(x => x.id !== editingId);
     data.schedule = data.schedule.filter(s => s.clientId !== editingId);
     save(); $("dlg").close(); setTab("clients"); render();
+    photoDel(pids).catch(() => {});
   }
 };
 
@@ -609,6 +679,8 @@ function renderClient() {
       <div class="row" style="margin-top:10px"><span class="muted" style="margin:0">${pk.name ? esc(pk.name) : "Chưa có gói tập"}${pk.total ? ` · đã tập ${doneCount(c)}/${pk.total} buổi` : ""}</span>${pkgBadge(pk)}</div>
     </div>
 
+    ${bodyHtml(c)}
+
     <h3>Chương trình tập luyện</h3>
     <input data-f="pname" value="${esc(p.name)}" style="margin:8px 0;font-weight:600" aria-label="Tên chương trình">
     <div class="weeks">
@@ -630,6 +702,7 @@ function renderClient() {
 
     <details><summary>Tiến triển mức tạ theo tuần</summary><div id="progTable" style="margin-top:8px"></div></details>`;
   renderProgTable();
+  hydrateThumbs($("view-client"));
 }
 function renderProgTable() {
   const c = cur(), p = ensureProg(c), W = p.weeks, rows = [];
@@ -669,6 +742,9 @@ cv.addEventListener("click", e => {
   const act = b.dataset.act, s = +b.dataset.s, i = +b.dataset.i, c = cur(), p = ensureProg(c);
   if (act === "back") { setTab("clients"); render(); return; }
   if (act === "greet") { copyGreeting(c); return; }
+  if (act === "bodyNew") { openBody(c, null); return; }
+  if (act === "bodyEdit") { openBody(c, b.dataset.id); return; }
+  if (act === "photo") { openPhoto(b.dataset.pid, b.dataset.cap); return; }
   if (act === "edit") return openForm(curId);
   if (act === "addItem") return openAdd(s);
   if (act === "toggleDay") {
@@ -933,13 +1009,17 @@ $("btnClearEx").onclick = () => {
 };
 
 // ---------- sao lưu / khôi phục ----------
-$("btnExport").onclick = () => {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+$("btnExport").onclick = async () => {
+  let photos = [];
+  try { photos = await photoAll(); } catch (e) {}
+  // File sao lưu kèm cả ảnh số đo (ảnh nằm trong kho ảnh riêng của trình duyệt)
+  const blob = new Blob([photos.length ? JSON.stringify({ ...data, photos }) : JSON.stringify(data, null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = `so-pt-sao-luu-${today()}.json`;
   a.click();
-  URL.revokeObjectURL(a.href);
+  setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+  toast(`Đã tạo file sao lưu${photos.length ? ` (kèm ${photos.length} ảnh, ${(blob.size / 1048576).toFixed(1)} MB)` : ""}. Giữ file này riêng tư.`);
 };
 $("btnImport").onclick = () => $("fileImport").click();
 $("fileImport").onchange = async e => {
@@ -948,7 +1028,14 @@ $("fileImport").onchange = async e => {
     const d = JSON.parse(await f.text());
     if (!d || !Array.isArray(d.clients)) throw new Error();
     migrate(d);
-    if (confirm(`Khôi phục ${d.clients.length} khách và ${d.exercises.length} bài tập từ file? Dữ liệu hiện tại sẽ bị thay thế.`)) { data = d; save(); setTab("clients"); render(); renderEx(); }
+    const photos = Array.isArray(d.photos) ? d.photos : null; delete d.photos;
+    if (confirm(`Khôi phục ${d.clients.length} khách${photos ? `, ${photos.length} ảnh` : ""} và ${d.exercises.length} bài tập từ file? Dữ liệu hiện tại sẽ bị thay thế.`)) {
+      if (photos) {
+        try { await photoClear(); for (const p of photos) await photoPut(p); thumbCache.clear(); }
+        catch (x) { alert("Không khôi phục được ảnh (bộ nhớ trình duyệt có thể đã đầy). Các dữ liệu khác vẫn được khôi phục."); }
+      }
+      data = d; save(); setTab("clients"); render(); renderEx();
+    }
   } catch (err) { alert("File không hợp lệ."); }
   e.target.value = "";
 };
@@ -1139,7 +1226,7 @@ function checkIn(c, date) {
   data.schedule.push(entry);
   save(); render(); if (curId) renderClient();
   const p = c.pkg || {}, left = p.total ? p.total - doneCount(c) : null;
-  toast(`Đã điểm danh ${c.name}${left === null ? "" : left > 0 ? ` · còn ${left} buổi` : " · đã hết buổi trong gói"}`, () => removeCheck(entry.id));
+  toast(`Đã điểm danh ${c.name}${date !== today() ? " ngày " + fmtDate(date).slice(0, 5) : ""}${left === null ? "" : left > 0 ? ` · còn ${left} buổi` : " · đã hết buổi trong gói"}`, () => removeCheck(entry.id));
   return true;
 }
 function removeCheck(id) {
@@ -1147,58 +1234,100 @@ function removeCheck(id) {
   save(); render(); if (curId) renderClient();
 }
 
-// ---------- Hôm nay / Ngày mai ở đầu danh sách khách ----------
-let todayMode = 0; // 0 = hôm nay, 1 = ngày mai
+// ---------- Lịch tập: Tháng → Tuần → Ngày (đầu danh sách khách) ----------
+// Ai tập ngày nào: lấy từ bảng lịch tuần của từng khách + các buổi đã điểm danh
 function dayPlan(dateObj) {
   const d = dowIdx(dateObj), key = ymd(dateObj), rows = [];
   data.clients.forEach(c => {
     const x = c.weekly && c.weekly.days ? c.weekly.days.find(z => z.d === d) : null;
     const done = data.schedule.find(s => s.clientId === c.id && s.date === key && s.status === "done");
     if (!x && !done) return;
+    if (!done && c.pkg && c.pkg.start && key < c.pkg.start) return; // chưa tới ngày bắt đầu gói
     const t = x ? (x.t !== undefined ? x.t : (c.weekly.time || "")) : (done.time || "");
     const sess = x && c.program ? c.program.sessions.find(s => s.id === x.s) : null;
     rows.push({ c, t, sess, done, extra: !x });
   });
   return rows.sort((a, b) => (a.t || "99:99").localeCompare(b.t || "99:99") || a.c.name.localeCompare(b.c.name, "vi"));
 }
-function renderToday() {
+const plusDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const mondayOf = d => plusDays(d, -dowIdx(d));
+// Mỗi tuần (T2–CN) thuộc về tháng chứa ngày Thứ 5 của tuần đó → tuần nào cũng chỉ nằm trong 1 tháng
+const weekMonth = mon => { const th = plusDays(mon, 3); return { y: th.getFullYear(), m: th.getMonth() }; };
+function monthWeeks(y, m) {
+  let mon = mondayOf(new Date(y, m, 1));
+  if (plusDays(mon, 3).getMonth() !== m) mon = plusDays(mon, 7);
+  const out = [];
+  while (plusDays(mon, 3).getMonth() === m && plusDays(mon, 3).getFullYear() === y) { out.push(mon); mon = plusDays(mon, 7); }
+  return out;
+}
+const rangeTxt = (a, b) => a.getMonth() === b.getMonth() ? `${String(a.getDate()).padStart(2, "0")}–${dm(b)}` : `${dm(a)}–${dm(b)}`;
+let calFollow = true, calWeek = mondayOf(new Date()), calYM = weekMonth(calWeek);
+
+function calRow(r, key, tKey) {
+  const p = r.c.pkg || {}, left = p.total ? p.total - doneCount(r.c) : null;
+  const sub = [r.sess ? r.sess.name + (r.sess.items.length ? ` · ${r.sess.items.length} bài` : "") : (r.extra ? "Tập ngoài lịch" : "Chưa gán buổi"),
+    left === null ? "" : left > 0 ? `còn ${left} buổi` : "hết buổi trong gói",
+    p.end && key > p.end ? "gói đã hết hạn" : ""].filter(Boolean).join(" · ");
+  const btn = r.done
+    ? `<button class="sm okbtn" data-undo="${esc(r.done.id)}" aria-label="Bỏ điểm danh">✓ Đã tập</button>`
+    : key <= tKey ? `<button class="sm" data-ck="${esc(r.c.id)}" data-date="${key}">✓ Điểm danh</button>` : "";
+  const bday = r.c.dob && r.c.dob.slice(5) === key.slice(5);
+  return `<div class="trow" data-open="${esc(r.c.id)}"><div class="ttime">${r.t ? fmtTime(r.t) : "--"}</div>
+    <div class="twho"><b>${esc(r.c.name)}${bday ? " 🎂" : ""}</b><span>${esc(sub)}</span></div>${btn}</div>`;
+}
+function renderCal() {
   const box = $("todayBox");
   if (!data.clients.length || $("search").value.trim()) { box.innerHTML = ""; return; }
-  const now = new Date(), tmr = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
-  const tdRows = dayPlan(now), tmRows = dayPlan(tmr), base = todayMode ? tmr : now, rows = todayMode ? tmRows : tdRows;
-  const rowHtml = r => {
-    const p = r.c.pkg || {}, left = p.total ? p.total - doneCount(r.c) : null;
-    const sub = [r.sess ? r.sess.name + (r.sess.items.length ? ` · ${r.sess.items.length} bài` : "") : (r.extra ? "Tập ngoài lịch" : "Chưa gán buổi"),
-      left === null ? "" : left > 0 ? `còn ${left} buổi` : "hết buổi trong gói"].filter(Boolean).join(" · ");
-    const btn = todayMode ? "" : r.done
-      ? `<button class="sm okbtn" data-undo="${esc(r.done.id)}" aria-label="Bỏ điểm danh">✓ Đã tập</button>`
-      : `<button class="sm" data-ck="${esc(r.c.id)}">✓ Điểm danh</button>`;
-    return `<div class="trow" data-open="${esc(r.c.id)}"><div class="ttime">${r.t ? fmtTime(r.t) : "--"}</div>
-      <div class="twho"><b>${esc(r.c.name)}${(nextBirthday(r.c.dob) || {}).days === 0 ? " 🎂" : ""}</b><span>${esc(sub)}</span></div>${btn}</div>`;
-  };
+  const now = new Date(), tKey = ymd(now), curMon = ymd(mondayOf(now));
+  if (calFollow) { calWeek = mondayOf(now); calYM = weekMonth(calWeek); }
+  const weeks = monthWeeks(calYM.y, calYM.m), selKey = ymd(calWeek);
+  let total = 0, done = 0;
+  const days = Array.from({ length: 7 }, (_, i) => plusDays(calWeek, i)).map(d => {
+    const key = ymd(d), rows = dayPlan(d), isT = key === tKey;
+    total += rows.length; done += rows.filter(r => r.done).length;
+    const head = `${DAYNAMES[dowIdx(d)]}, ${dm(d)}${isT ? " · Hôm nay" : ""}`;
+    return rows.length
+      ? `<div class="dayh${isT ? " now" : ""}">${head}</div>${rows.map(r => calRow(r, key, tKey)).join("")}`
+      : `<div class="dayh rest${isT ? " now" : ""}">${head} <span>· Nghỉ</span></div>`;
+  }).join("");
   box.innerHTML = `<div class="card static">
     ${bdayHtml()}
-    <div class="tdhead">
-      <div class="chips">
-        <button class="chip ${todayMode ? "" : "on"}" data-tm="0">Hôm nay · ${tdRows.length}</button>
-        <button class="chip ${todayMode ? "on" : ""}" data-tm="1">Ngày mai · ${tmRows.length}</button>
-      </div>
-      <span class="muted" style="margin:0">${DAYNAMES[dowIdx(base)]}, ${dm(base)}</span>
+    <div class="calhead">
+      <button class="x" data-cal="prev" aria-label="Tháng trước">‹</button>
+      <span class="ttl">Tháng ${calYM.m + 1}/${calYM.y}</span>
+      <button class="x" data-cal="next" aria-label="Tháng sau">›</button>
+      ${selKey !== curMon ? `<button class="sm ghost" data-cal="today">Tuần này</button>` : ""}
     </div>
-    ${rows.map(rowHtml).join("") || `<div class="muted" style="padding:6px 0 2px">${todayMode ? "Ngày mai" : "Hôm nay"} không có khách nào có lịch tập.</div>`}
+    <div class="wkchips">${weeks.map((w, i) => `<button class="chip ${ymd(w) === selKey ? "on" : ""}" data-wk="${ymd(w)}">Tuần ${i + 1} · ${rangeTxt(w, plusDays(w, 6))}</button>`).join("")}</div>
+    <div class="wksum">${total ? `${total} buổi tập trong tuần${done ? ` · đã tập ${done}` : ""}` : "Chưa có buổi tập nào trong tuần"}</div>
+    ${days}
   </div>`;
 }
 $("todayBox").onclick = e => {
   if (e.target.closest("a")) return; // nút Mở Zalo: để trình duyệt tự mở
   const gr = e.target.closest("[data-greet]");
   if (gr) { const c = data.clients.find(x => x.id === gr.dataset.greet); if (c) copyGreeting(c); return; }
-  const tm = e.target.closest("[data-tm]"); if (tm) { todayMode = +tm.dataset.tm; renderToday(); return; }
+  const cb = e.target.closest("[data-cal]");
+  if (cb) {
+    const cm = ymd(mondayOf(new Date()));
+    if (cb.dataset.cal === "today") calFollow = true;
+    else {
+      const t = new Date(calYM.y, calYM.m + (cb.dataset.cal === "next" ? 1 : -1), 1);
+      calYM = { y: t.getFullYear(), m: t.getMonth() };
+      const ws = monthWeeks(calYM.y, calYM.m);
+      calWeek = ws.find(w => ymd(w) === cm) || ws[0];
+      calFollow = ymd(calWeek) === cm;
+    }
+    renderCal(); return;
+  }
+  const wk = e.target.closest("[data-wk]");
+  if (wk) { calWeek = parseYmd(wk.dataset.wk); calFollow = wk.dataset.wk === ymd(mondayOf(new Date())); renderCal(); return; }
   const ck = e.target.closest("[data-ck]");
-  if (ck) { const c = data.clients.find(x => x.id === ck.dataset.ck); if (c) checkIn(c, today()); return; }
+  if (ck) { const c = data.clients.find(x => x.id === ck.dataset.ck); if (c) checkIn(c, ck.dataset.date || today()); return; }
   const un = e.target.closest("[data-undo]");
   if (un) {
     const s = data.schedule.find(x => x.id === un.dataset.undo), c = s && data.clients.find(x => x.id === s.clientId);
-    if (s && confirm(`Bỏ điểm danh hôm nay của ${c ? c.name : "khách này"}?`)) removeCheck(s.id);
+    if (s && confirm(`Bỏ điểm danh ngày ${fmtDate(s.date)} của ${c ? c.name : "khách này"}?`)) removeCheck(s.id);
     return;
   }
   const row = e.target.closest("[data-open]"); if (row) showClient(row.dataset.open);
@@ -1248,6 +1377,196 @@ async function copyGreeting(c) {
 // Mở lại app sang ngày mới thì tự cập nhật ngày
 function updateTodayLabel() { const n = new Date(); $("todayLbl").textContent = DAYNAMES[dowIdx(n)] + ", " + dm(n); }
 document.addEventListener("visibilitychange", () => { if (!document.hidden) { updateTodayLabel(); if (!curId) render(); } });
+
+// ---------- Số đo & hình ảnh ----------
+// Số đo lưu trong hồ sơ khách (c.body: mỗi lần đo một bản ghi, lần sớm nhất = đầu vào).
+// Ảnh lưu trong IndexedDB (kho ảnh của trình duyệt), vì bộ nhớ thường chỉ ~5 MB, không đủ cho ảnh.
+const MEAS = [["can", "Cân nặng", "kg"], ["vai", "Vai", "cm"], ["nguc", "Ngực", "cm"], ["eo", "Eo", "cm"], ["bung", "Bụng", "cm"],
+  ["duiT", "Đùi trái", "cm"], ["duiP", "Đùi phải", "cm"], ["tayT", "Tay trái", "cm"], ["tayP", "Tay phải", "cm"]];
+const num = v => { const n = parseFloat(String(v ?? "").replace(",", ".")); return isNaN(n) ? null : n; };
+const fmtNum = n => String(Math.round(n * 10) / 10).replace(".", ",");
+const thumbCache = new Map();
+let bodyOpen = false, bodyCtx = null;
+
+let photoDbP = null;
+function photoDb() {
+  if (!photoDbP) photoDbP = new Promise((res, rej) => {
+    const r = indexedDB.open("pt-app-photos", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("photos", { keyPath: "id" });
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => { photoDbP = null; rej(r.error); };
+  });
+  return photoDbP;
+}
+function photoTx(mode, work) {
+  return photoDb().then(db => new Promise((res, rej) => {
+    const tx = db.transaction("photos", mode), req = work(tx.objectStore("photos"));
+    let out; if (req) req.onsuccess = () => { out = req.result; };
+    tx.oncomplete = () => res(out); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error);
+  }));
+}
+const photoPut = rec => photoTx("readwrite", st => st.put(rec));
+const photoGet = id => photoTx("readonly", st => st.get(id));
+const photoAll = () => photoTx("readonly", st => st.getAll()).then(r => r || []);
+const photoClear = () => photoTx("readwrite", st => st.clear());
+const photoDel = ids => ids && ids.length ? photoTx("readwrite", st => { ids.forEach(id => st.delete(id)); return null; }) : Promise.resolve();
+
+// Thu nhỏ ảnh: ảnh lớn tối đa 1280px (~200–300 KB), ảnh nhỏ 240px để hiện danh sách
+function shrinkTo(src, max, q) {
+  const W = src.naturalWidth || src.width, H = src.naturalHeight || src.height, k = Math.min(1, max / Math.max(W, H));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(W * k)); canvas.height = Math.max(1, Math.round(H * k));
+  const g = canvas.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, canvas.width, canvas.height);
+  g.drawImage(src, 0, 0, canvas.width, canvas.height);
+  return q ? canvas.toDataURL("image/jpeg", q) : canvas;
+}
+async function makePhoto(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image(); img.src = url; await img.decode();
+    const big = shrinkTo(img, 1280);
+    return { id: "p" + uid(), full: big.toDataURL("image/jpeg", 0.82), thumb: shrinkTo(big, 240, 0.72), isNew: true };
+  } finally { URL.revokeObjectURL(url); }
+}
+async function hydrateThumbs(root) {
+  for (const img of root.querySelectorAll("img[data-pid]")) {
+    const id = img.dataset.pid;
+    let t = thumbCache.get(id);
+    if (t === undefined) { try { const r = await photoGet(id); t = r ? r.thumb : ""; } catch (e) { t = ""; } thumbCache.set(id, t); }
+    if (t) img.src = t; else img.alt = "Không tìm thấy ảnh";
+  }
+}
+
+const bodyList = c => (c.body || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+const bodyLabel = i => i === 0 ? "Đầu vào" : "Lần " + (i + 1);
+const shortDate = s => fmtDate(s).replace(/\/\d{2}(\d{2})$/, "/$1");
+function bodyHtml(c) {
+  const list = bodyList(c);
+  if (!list.length) return `<div class="card static"><div class="row">
+      <div><label style="margin:0 0 3px">Số đo & hình ảnh</label><div class="muted" style="margin:0">Chưa có số đo đầu vào.</div></div>
+      <button class="sm" data-act="bodyNew">+ Nhập số đo</button></div></div>`;
+  const first = list[0], last = list[list.length - 1], two = list.length > 1;
+  const nPh = list.reduce((n, e) => n + (e.photos || []).length, 0);
+  const rows = MEAS.map(([k, l, u]) => {
+    const a = num(first.m[k]), b = num(last.m[k]);
+    if (a === null && (!two || b === null)) return "";
+    const d = two && a !== null && b !== null ? b - a : null;
+    return `<tr><td>${l} <small class="muted">${u}</small></td><td>${a === null ? "–" : fmtNum(a)}</td>${two ? `<td>${b === null ? "–" : fmtNum(b)}</td><td>${d === null ? "" : d === 0 ? "0" : (d > 0 ? "+" : "−") + fmtNum(Math.abs(d))}</td>` : ""}</tr>`;
+  }).join("");
+  const table = rows
+    ? `<div style="overflow-x:auto;margin-top:8px"><table class="mtable"><tr><th>Số đo</th><th>Đầu vào<br><small>${shortDate(first.date)}</small></th>${two ? `<th>Gần nhất<br><small>${shortDate(last.date)}</small></th><th>Thay đổi</th>` : ""}</tr>${rows}</table></div>`
+    : `<div class="muted">Chưa nhập số đo.</div>`;
+  const th = (e, i) => (e.photos || []).map(id => `<img class="thumb" data-act="photo" data-pid="${esc(id)}" data-cap="${esc(bodyLabel(i) + " · " + fmtDate(e.date))}" alt="Ảnh ${esc(bodyLabel(i))}">`).join("")
+    || `<span class="muted" style="margin:0">Chưa có ảnh</span>`;
+  const photos = two
+    ? `<div class="ba"><div><div class="cap">Đầu vào · ${shortDate(first.date)}</div><div class="thumbs">${th(first, 0)}</div></div>
+        <div><div class="cap">Gần nhất · ${shortDate(last.date)}</div><div class="thumbs">${th(last, list.length - 1)}</div></div></div>`
+    : `<div style="margin-top:12px"><div class="muted" style="font-weight:600;margin:0 0 4px">Ảnh đầu vào</div><div class="thumbs">${th(first, 0)}</div></div>`;
+  const entries = list.map((e, i) => `<div class="row" style="padding:8px 0;border-top:1px solid var(--line)">
+      <span>${bodyLabel(i)} · ${fmtDate(e.date)}${(e.photos || []).length ? ` · ${e.photos.length} ảnh` : ""}</span>
+      <button class="sm ghost" data-act="bodyEdit" data-id="${esc(e.id)}">Sửa</button></div>`).join("");
+  return `<details class="card static bodybox" ${bodyOpen ? "open" : ""}>
+    <summary><span>Số đo & hình ảnh <span class="muted" style="font-weight:400">· ${two ? `${list.length} lần đo · mới nhất ${shortDate(last.date)}` : `Đầu vào ${shortDate(first.date)}`}${nPh ? ` · ${nPh} ảnh` : ""}</span></span></summary>
+    ${table}${photos}
+    <div style="margin-top:12px">${entries}</div>
+    <button class="sm" data-act="bodyNew" style="margin-top:10px">+ Thêm lần đo mới</button>
+  </details>`;
+}
+cv.addEventListener("toggle", e => { if (e.target.classList && e.target.classList.contains("bodybox")) bodyOpen = e.target.open; }, true);
+
+function openBody(c, id) {
+  const list = bodyList(c), e = id ? list.find(x => x.id === id) : null, idx = e ? list.indexOf(e) : list.length;
+  const prev = e ? list[idx - 1] : list[list.length - 1];
+  const ctx = bodyCtx = { c, id: e ? e.id : null, photos: [], removed: [] };
+  $("b_title").textContent = e ? (idx === 0 ? "Số đo đầu vào" : "Lần đo " + (idx + 1)) : (list.length ? "Lần đo mới" : "Số đo đầu vào");
+  $("b_date").value = e ? e.date : today();
+  $("b_fields").innerHTML = MEAS.map(([k, l, u]) => `<div><label for="b_${k}">${l} (${u})</label><input id="b_${k}" inputmode="decimal" autocomplete="off"
+      value="${esc(e ? (e.m[k] || "") : "")}" placeholder="${prev && prev.m[k] ? esc(prev.m[k] + " (lần trước)") : ""}"></div>`).join("");
+  $("b_note").value = e ? (e.note || "") : "";
+  $("b_del").style.display = e ? "" : "none";
+  $("b_busy").textContent = "";
+  renderBodyPhotos();
+  $("bodyDlg").showModal();
+  // Nạp ảnh cũ của lần đo; nút Lưu sẽ chờ bước này xong để không làm mất ảnh
+  ctx.ready = (async () => {
+    for (const pid of (e && e.photos) || []) {
+      let t = thumbCache.get(pid);
+      if (t === undefined) { try { const r = await photoGet(pid); t = r ? r.thumb : ""; } catch (x) { t = ""; } thumbCache.set(pid, t); }
+      ctx.photos.push({ id: pid, thumb: t, isNew: false });
+    }
+    if (bodyCtx === ctx) renderBodyPhotos();
+  })();
+}
+function renderBodyPhotos() {
+  if (!bodyCtx) return;
+  $("b_photos").innerHTML = bodyCtx.photos.map((p, i) => `<div class="pitem"><img class="thumb" src="${esc(p.thumb)}" alt="Ảnh ${i + 1}"><button type="button" data-rm="${i}" aria-label="Bỏ ảnh ${i + 1}">✕</button></div>`).join("")
+    || `<span class="muted" style="margin:0">Chưa có ảnh. Nên chụp mặt trước, mặt bên, mặt sau để dễ so sánh về sau.</span>`;
+}
+$("b_photos").onclick = e => {
+  const b = e.target.closest("[data-rm]"); if (!b || !bodyCtx) return;
+  const [p] = bodyCtx.photos.splice(+b.dataset.rm, 1);
+  if (p && !p.isNew) bodyCtx.removed.push(p.id);
+  renderBodyPhotos();
+};
+$("b_add").onclick = () => $("b_file").click();
+$("b_file").onchange = async e => {
+  const files = [...e.target.files], ctx = bodyCtx; e.target.value = "";
+  if (!files.length || !ctx) return;
+  let bad = 0;
+  for (let k = 0; k < files.length; k++) {
+    if (ctx.photos.length >= 8) { alert("Mỗi lần đo tối đa 8 ảnh."); break; }
+    $("b_busy").textContent = `Đang xử lý ảnh ${k + 1}/${files.length}...`;
+    try { const p = await makePhoto(files[k]); if (bodyCtx !== ctx) return; ctx.photos.push(p); renderBodyPhotos(); }
+    catch (x) { bad++; }
+  }
+  $("b_busy").textContent = "";
+  if (bad) alert(`Có ${bad} ảnh không đọc được. Nếu là ảnh HEIC của iPhone đang mở trên máy tính, hãy chọn ảnh JPG/PNG, hoặc chụp/chọn ảnh ngay trên điện thoại.`);
+};
+$("b_save").onclick = async () => {
+  const ctx = bodyCtx; if (!ctx) return;
+  await ctx.ready; if (bodyCtx !== ctx) return;
+  const date = $("b_date").value; if (!date) { alert("Hãy chọn ngày đo."); return; }
+  const m = {}; MEAS.forEach(([k]) => { const v = $("b_" + k).value.trim(); if (v) m[k] = v; });
+  if (!Object.keys(m).length && !ctx.photos.length) { alert("Hãy nhập ít nhất một số đo hoặc thêm một ảnh."); return; }
+  $("b_save").disabled = true;
+  let failed = 0; const kept = [];
+  for (const p of ctx.photos) {
+    if (!p.isNew) { kept.push(p.id); continue; }
+    try { await photoPut({ id: p.id, clientId: ctx.c.id, full: p.full, thumb: p.thumb, created: Date.now() }); kept.push(p.id); thumbCache.set(p.id, p.thumb); }
+    catch (x) { failed++; }
+  }
+  try { await photoDel(ctx.removed); } catch (x) {}
+  const c = ctx.c; c.body = c.body || [];
+  const entry = { id: ctx.id || "b" + uid(), date, m, note: $("b_note").value.trim(), photos: kept };
+  const i = c.body.findIndex(x => x.id === entry.id);
+  if (i >= 0) c.body[i] = entry; else c.body.push(entry);
+  bodyOpen = true; save();
+  $("b_save").disabled = false; bodyCtx = null; $("bodyDlg").close();
+  if (curId === c.id) renderClient();
+  if (failed) alert(`Không lưu được ${failed} ảnh (bộ nhớ trình duyệt có thể đã đầy). Số đo vẫn được lưu.`);
+  else toast(ctx.id ? "Đã cập nhật lần đo." : `Đã lưu số đo${kept.length ? ` và ${kept.length} ảnh` : ""}.`);
+};
+$("b_del").onclick = async () => {
+  const ctx = bodyCtx; if (!ctx || !ctx.id) return;
+  if (!confirm("Xóa lần đo này cùng các ảnh của nó? Không thể hoàn tác.")) return;
+  const c = ctx.c, e = (c.body || []).find(x => x.id === ctx.id);
+  c.body = (c.body || []).filter(x => x.id !== ctx.id); save();
+  bodyCtx = null; $("bodyDlg").close();
+  try { await photoDel((e && e.photos) || []); } catch (x) {}
+  if (curId === c.id) renderClient();
+  toast("Đã xóa lần đo.");
+};
+$("b_cancel").onclick = $("b_x").onclick = () => { bodyCtx = null; $("bodyDlg").close(); };
+$("bodyDlg").addEventListener("close", () => { bodyCtx = null; $("b_save").disabled = false; });
+
+async function openPhoto(id, cap) {
+  $("ph_cap").textContent = cap || "";
+  $("ph_img").src = thumbCache.get(id) || "";
+  $("photoDlg").showModal();
+  try { const r = await photoGet(id); if (r && r.full) $("ph_img").src = r.full; } catch (x) {}
+}
+$("ph_close").onclick = () => $("photoDlg").close();
+$("ph_img").onclick = () => $("photoDlg").close();
 
 // ---------- khởi động ----------
 if ("serviceWorker" in navigator && location.protocol.startsWith("http")) navigator.serviceWorker.register("sw.js").catch(() => {});
